@@ -11,12 +11,12 @@ import {
   Download,
   File,
   X,
-  CheckCircle2,
+  CircleCheck,
   AlertCircle,
   FileText,
   FileImage,
-  FileAudio,
-  FileVideo,
+  FileMusic,
+  FileVideoCamera,
   GripVertical,
 } from "lucide-react"
 
@@ -24,8 +24,8 @@ function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase()
   if (["txt", "pdf", "doc", "docx", "md"].includes(ext || "")) return <FileText className="h-4 w-4" />
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "")) return <FileImage className="h-4 w-4" />
-  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileAudio className="h-4 w-4" />
-  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideo className="h-4 w-4" />
+  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileMusic className="h-4 w-4" />
+  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideoCamera className="h-4 w-4" />
   return <File className="h-4 w-4" />
 }
 
@@ -228,7 +228,7 @@ export function ZipCreator() {
           >
             <div className="flex justify-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10">
-                <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                <CircleCheck className="h-8 w-8 text-emerald-500" />
               </div>
             </div>
             <div>

@@ -6,27 +6,13 @@ import { cn } from "@/lib/utils/cn"
 import { useToolStore } from "@/lib/store/use-tool-store"
 import { categories, tools } from "@/lib/utils/tools-data"
 import { ToolCard } from "@/components/ui/tool-card"
-import { Search, Sparkles } from "lucide-react"
-import type { ToolCategory } from "@/types"
-
-const categoryIcons: Record<string, React.ReactNode> = {
-  pdf: <span className="text-xs font-bold">PDF</span>,
-  image: <span className="text-xs font-bold">IMG</span>,
-  document: <span className="text-xs font-bold">DOC</span>,
-  developer: <span className="text-xs font-bold">DEV</span>,
-  video: <span className="text-xs font-bold">VID</span>,
-  audio: <span className="text-xs font-bold">AUD</span>,
-  business: <span className="text-xs font-bold">BIZ</span>,
-  office: <span className="text-xs font-bold">OFF</span>,
-  ai: <span className="text-xs font-bold">AI</span>,
-  security: <span className="text-xs font-bold">SEC</span>,
-  utility: <span className="text-xs font-bold">UTL</span>,
-}
+import { Search, Sparkles, X } from "lucide-react"
 
 export default function ToolsPage() {
   const { selectedCategory, setSelectedCategory } = useToolStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [mounted, setMounted] = React.useState(false)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     setMounted(true)
@@ -76,90 +62,97 @@ export default function ToolsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Header */}
+      {/* Hero */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8 space-y-6"
+        className="mb-10 text-center"
       >
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            All Tools
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            Browse our collection of {tools.length}+ free and premium tools
-          </p>
-        </div>
+        <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+          All <span className="text-primary">Tools</span>
+        </h1>
+        <p className="mt-3 text-lg text-muted-foreground">
+          Browse our collection of {tools.length}+ free and premium tools to boost your productivity
+        </p>
 
         {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative mx-auto mt-6 max-w-xl">
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search tools by name or description..."
-            className="h-10 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+            className="h-12 w-full rounded-xl border border-border bg-background pl-12 pr-12 text-sm text-foreground placeholder-muted-foreground shadow-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
-
-        {/* Category tabs */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setSelectedCategory("all")}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all",
-              selectedCategory === "all"
-                ? "border-primary/30 bg-primary/10 text-primary shadow-sm"
-                : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground hover:bg-accent/50"
-            )}
-          >
-            <Sparkles className="h-4 w-4" />
-            All Tools
-            <span className="ml-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] tabular-nums">
-              {tools.length}
-            </span>
-          </button>
-          {categories.map((cat) => {
-            const isActive = selectedCategory === cat.id
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all",
-                  isActive
-                    ? "border-primary/30 bg-primary/10 text-primary shadow-sm"
-                    : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                <span
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-bold text-white"
-                  style={{ backgroundColor: cat.color }}
-                >
-                  {cat.name.charAt(0)}
-                </span>
-                {cat.name}
-                <span className="ml-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] tabular-nums">
-                  {cat.toolCount}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-
-        {searchQuery && mounted && (
-          <motion.p
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-sm text-muted-foreground"
-          >
-            Found {totalResults} tool{totalResults !== 1 ? "s" : ""} for
-            &ldquo;{searchQuery}&rdquo;
-          </motion.p>
-        )}
       </motion.div>
 
-      {/* Tools Grid grouped by category */}
+      {/* Category Pills */}
+      <div
+        ref={scrollRef}
+        className="mb-10 flex gap-2 overflow-x-auto pb-2 scrollbar-none"
+      >
+        <button
+          onClick={() => setSelectedCategory("all")}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all",
+            selectedCategory === "all"
+              ? "border-primary bg-primary/10 text-primary shadow-sm"
+              : "border-border bg-background text-muted-foreground hover:border-primary/30 hover:text-foreground"
+          )}
+        >
+          <Sparkles className="h-4 w-4" />
+          All
+          <span className="ml-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[11px] tabular-nums">
+            {tools.length}
+          </span>
+        </button>
+        {categories.map((cat) => {
+          const isActive = selectedCategory === cat.id
+          return (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id)}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all",
+                isActive
+                  ? "border-primary bg-primary/10 text-primary shadow-sm"
+                  : "border-border bg-background text-muted-foreground hover:border-primary/30 hover:text-foreground"
+              )}
+            >
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: cat.color }}
+              />
+              {cat.name}
+              <span className="ml-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[11px] tabular-nums">
+                {cat.toolCount}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {searchQuery && mounted && (
+        <motion.p
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 text-sm text-muted-foreground"
+        >
+          Found {totalResults} tool{totalResults !== 1 ? "s" : ""} for
+          &ldquo;{searchQuery}&rdquo;
+        </motion.p>
+      )}
+
+      {/* Tools Grid */}
       <AnimatePresence mode="wait">
         {visibleCategories.length === 0 ? (
           <motion.div
@@ -204,27 +197,18 @@ export default function ToolsPage() {
 
               return (
                 <section key={category.id}>
-                  <div className="mb-5 flex items-center gap-3">
-                    <div
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-white text-xs font-bold shadow-sm"
+                  <div className="mb-5 flex items-center gap-3 border-b border-border pb-3">
+                    <span
+                      className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: category.color }}
-                    >
-                      {categoryIcons[category.id] || category.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-semibold text-foreground">
-                        {category.name}
-                      </h2>
-                      <p className="text-sm text-muted-foreground">
-                        {category.description}
-                      </p>
-                    </div>
-                    <div className="ml-auto hidden sm:block">
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {categoryTools.length} tool
-                        {categoryTools.length !== 1 ? "s" : ""}
-                      </span>
-                    </div>
+                    />
+                    <h2 className="text-xl font-semibold text-foreground">
+                      {category.name}
+                    </h2>
+                    <span className="text-sm text-muted-foreground tabular-nums">
+                      {categoryTools.length} tool
+                      {categoryTools.length !== 1 ? "s" : ""}
+                    </span>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

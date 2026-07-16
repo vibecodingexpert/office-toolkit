@@ -10,7 +10,7 @@ import {
   Upload,
   Download,
   RefreshCw,
-  Layout,
+  LayoutGrid,
   Image,
   Palette,
   X,
@@ -147,7 +147,7 @@ export function CollageMaker() {
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <Layout className="h-5 w-5 text-primary" />
+          <LayoutGrid className="h-5 w-5 text-primary" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">Collage Maker</h2>
@@ -228,7 +228,7 @@ export function CollageMaker() {
 
       {images.length > 0 && (
         <div className="flex flex-wrap gap-3">
-          <Button onClick={generateCollage} loading={loading} icon={<Layout className="h-4 w-4" />}>
+          <Button onClick={generateCollage} loading={loading} icon={<LayoutGrid className="h-4 w-4" />}>
             Generate Collage
           </Button>
           {resultUrl && (

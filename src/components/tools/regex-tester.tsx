@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, Replace, Wand2, RotateCcw } from "lucide-react"
+import { Copy, Check, Replace, Wand, RotateCcw } from "lucide-react"
 
 export function RegexTester() {
   const [testString, setTestString] = React.useState("")
@@ -116,7 +116,7 @@ export function RegexTester() {
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <Wand2 className="h-5 w-5 text-primary" />
+          <Wand className="h-5 w-5 text-primary" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">Regex Tester</h2>
@@ -131,7 +131,7 @@ export function RegexTester() {
         value={pattern}
         onChange={(e) => setPattern(e.target.value)}
         placeholder="Enter regex pattern (e.g., \d+)..."
-        icon={<Wand2 className="h-4 w-4" />}
+        icon={<Wand className="h-4 w-4" />}
       />
 
       <div className="space-y-2">

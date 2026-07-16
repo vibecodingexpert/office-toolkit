@@ -8,13 +8,13 @@ import {
   Upload,
   File,
   X,
-  CheckCircle2,
+  CircleCheck,
   AlertCircle,
   FileText,
   FileImage,
   FileArchive,
-  FileAudio,
-  FileVideo,
+  FileMusic,
+  FileVideoCamera,
   FileCode,
 } from "lucide-react"
 
@@ -43,9 +43,9 @@ function getFileIcon(name: string) {
   if (["zip", "rar", "7z", "tar", "gz"].includes(ext || ""))
     return <FileArchive className="h-5 w-5" />
   if (["mp3", "wav", "ogg", "flac"].includes(ext || ""))
-    return <FileAudio className="h-5 w-5" />
+    return <FileMusic className="h-5 w-5" />
   if (["mp4", "avi", "mkv", "mov"].includes(ext || ""))
-    return <FileVideo className="h-5 w-5" />
+    return <FileVideoCamera className="h-5 w-5" />
   if (["js", "ts", "jsx", "tsx", "py", "java", "css", "html"].includes(ext || ""))
     return <FileCode className="h-5 w-5" />
   return <File className="h-5 w-5" />
@@ -227,7 +227,7 @@ export function FileUpload({
               )}
             >
               {filePreview.status === "complete" ? (
-                <CheckCircle2 className="h-5 w-5" />
+                <CircleCheck className="h-5 w-5" />
               ) : filePreview.status === "error" ? (
                 <AlertCircle className="h-5 w-5" />
               ) : (

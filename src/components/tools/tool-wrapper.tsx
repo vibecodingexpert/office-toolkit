@@ -18,7 +18,7 @@ import {
   RefreshCw,
   AlertCircle,
   FileUp,
-  Wand2,
+  Wand,
 } from "lucide-react"
 
 type ProcessingState = "idle" | "uploading" | "processing" | "complete" | "error"
@@ -171,7 +171,7 @@ export function ToolWrapper({
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                    <Wand2 className="h-5 w-5 animate-pulse text-primary" />
+                    <Wand className="h-5 w-5 animate-pulse text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">
@@ -274,7 +274,7 @@ export function ToolWrapper({
                   onClick={handleProcess}
                   disabled={!canProcess}
                 >
-                  <Wand2 className="h-4 w-4" />
+                  <Wand className="h-4 w-4" />
                   {state === "idle" || state === "uploading"
                     ? "Process"
                     : "Reprocess"}

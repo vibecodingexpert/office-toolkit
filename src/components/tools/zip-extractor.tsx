@@ -11,12 +11,12 @@ import {
   Download,
   File,
   Folder,
-  CheckCircle2,
+  CircleCheck,
   AlertCircle,
   FileText,
   FileImage,
-  FileAudio,
-  FileVideo,
+  FileMusic,
+  FileVideoCamera,
   Search,
 } from "lucide-react"
 
@@ -31,8 +31,8 @@ function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase()
   if (["txt", "pdf", "doc", "docx", "md"].includes(ext || "")) return <FileText className="h-4 w-4" />
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "")) return <FileImage className="h-4 w-4" />
-  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileAudio className="h-4 w-4" />
-  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideo className="h-4 w-4" />
+  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileMusic className="h-4 w-4" />
+  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideoCamera className="h-4 w-4" />
   return <File className="h-4 w-4" />
 }
 
@@ -274,7 +274,7 @@ export function ZipExtractor() {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                <CircleCheck className="h-5 w-5 text-emerald-500" />
                 <span className="text-sm font-medium">Extraction Complete</span>
               </div>
               <Button onClick={handleDownloadAll} variant="primary" size="sm">

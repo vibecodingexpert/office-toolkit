@@ -1,60 +1,33 @@
-"use client"
-
 import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { motion } from "framer-motion"
 import { cn } from "@/lib/utils/cn"
 
-const cardVariants = cva(
-  "rounded-xl border bg-card text-card-foreground shadow-sm",
-  {
-    variants: {
-      variant: {
-        default: "border-border",
-        glass: "border-transparent glass shadow-lg",
-        elevated: "border-border shadow-xl",
-        outline: "border-2 border-border bg-transparent",
-      },
-      padding: {
-        none: "p-0",
-        sm: "p-4",
-        md: "p-6",
-        lg: "p-8",
-      },
-      hover: {
-        none: "",
-        lift: "transition-all duration-200 hover:-translate-y-1 hover:shadow-md",
-        glow: "transition-all duration-200 hover:shadow-lg hover:shadow-primary/10",
-        scale: "transition-all duration-200 hover:scale-[1.02]",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      padding: "md",
-      hover: "none",
-    },
-  }
-)
+interface CardPaddingVariants {
+  padding?: "none" | "sm" | "md" | "lg"
+}
 
-export interface CardProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof cardVariants> {
-  asChild?: boolean
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement>, CardPaddingVariants {}
+
+const paddingMap: Record<string, string> = {
+  none: "p-0",
+  sm: "p-4",
+  md: "p-6",
+  lg: "p-8",
 }
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, variant, padding, hover, children, ...props }, ref) => {
+  ({ className, padding = "md", children, ...props }, ref) => {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className={cn(cardVariants({ variant, padding, hover, className }))}
+      <div
         ref={ref}
-        {...(props as React.ComponentPropsWithoutRef<typeof motion.div>)}
+        className={cn(
+          "rounded-xl border border-border bg-card transition-shadow hover:shadow-sm",
+          paddingMap[padding],
+          className
+        )}
+        {...props}
       >
         {children}
-      </motion.div>
+      </div>
     )
   }
 )
@@ -78,10 +51,7 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
-      className
-    )}
+    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
     {...props}
   />
 ))
@@ -119,12 +89,4 @@ const CardFooter = React.forwardRef<
 ))
 CardFooter.displayName = "CardFooter"
 
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  cardVariants,
-}
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }

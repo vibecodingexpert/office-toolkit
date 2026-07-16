@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils/cn"
-import { CheckSquare, Plus, Trash2, Circle, CheckCircle2, ListTodo } from "lucide-react"
+import { CheckSquare, Plus, Trash2, Circle, CircleCheck, ListTodo } from "lucide-react"
 
 interface TodoItem { id: string; text: string; completed: boolean; createdAt: number }
 
@@ -67,7 +67,7 @@ export function Todo() {
               {filtered.map(todo => (
                 <motion.div key={todo.id} layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="flex items-center gap-3 px-4 py-3 group hover:bg-accent/30 transition-colors">
                   <button onClick={() => toggleTodo(todo.id)} className="shrink-0 text-muted-foreground hover:text-primary transition-colors">
-                    {todo.completed ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <Circle className="h-5 w-5" />}
+                    {todo.completed ? <CircleCheck className="h-5 w-5 text-emerald-500" /> : <Circle className="h-5 w-5" />}
                   </button>
                   <span className={cn("flex-1 text-sm transition-all", todo.completed && "line-through text-muted-foreground")}>{todo.text}</span>
                   <motion.button whileHover={{ scale: 1.1 }} onClick={() => deleteTodo(todo.id)} className="shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all">

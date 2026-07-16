@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, Database, RotateCcw, Indent } from "lucide-react"
+import { Copy, Check, Database, RotateCcw, ListIndentIncrease } from "lucide-react"
 
 const SQL_KEYWORDS = [
   "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
@@ -177,7 +177,7 @@ export function SqlFormatter() {
         <Button
           onClick={handleFormat}
           loading={loading}
-          icon={<Indent className="h-4 w-4" />}
+          icon={<ListIndentIncrease className="h-4 w-4" />}
         >
           Format SQL
         </Button>

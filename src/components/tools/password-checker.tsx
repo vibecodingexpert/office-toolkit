@@ -7,9 +7,9 @@ import {
   Shield,
   Eye,
   EyeOff,
-  CheckCircle2,
+  CircleCheck,
   XCircle,
-  AlertTriangle,
+  TriangleAlert,
   Info,
   Copy,
   Check,
@@ -206,7 +206,7 @@ export function PasswordChecker() {
 
               {isCommon && (
                 <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <TriangleAlert className="h-4 w-4 shrink-0" />
                   This is a commonly used password. It is easily guessable.
                 </div>
               )}
@@ -222,7 +222,7 @@ export function PasswordChecker() {
                 {checklist.map((item) => (
                   <div key={item.key} className="flex items-center gap-3">
                     {item.pass ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <CircleCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                     ) : (
                       <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                     )}

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import {
   Users,
   Wrench,
-  DollarSign,
   Activity,
   TrendingUp,
   TrendingDown,
@@ -37,31 +36,31 @@ const stats = [
     color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   },
   {
-    title: "Monthly Revenue",
-    value: "$48,290",
-    change: "+23.1%",
-    trend: "up",
-    icon: DollarSign,
-    color: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  },
-  {
     title: "API Calls (24h)",
     value: "284.5K",
-    change: "-3.2%",
-    trend: "down",
+    change: "+5.3%",
+    trend: "up",
     icon: Activity,
     color: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  },
+  {
+    title: "Active Users",
+    value: "4,592",
+    change: "+18.7%",
+    trend: "up",
+    icon: Users,
+    color: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   },
 ]
 
 const recentUsers = [
-  { name: "Sarah Johnson", email: "sarah@example.com", plan: "Pro", status: "Active", date: "2 min ago", avatar: "SJ" },
-  { name: "Marcus Lee", email: "marcus@example.com", plan: "Free", status: "Active", date: "15 min ago", avatar: "ML" },
-  { name: "Emily Chen", email: "emily@example.com", plan: "Enterprise", status: "Active", date: "1 hour ago", avatar: "EC" },
-  { name: "David Kim", email: "david@example.com", plan: "Pro", status: "Inactive", date: "3 hours ago", avatar: "DK" },
-  { name: "Lisa Wang", email: "lisa@example.com", plan: "Free", status: "Active", date: "5 hours ago", avatar: "LW" },
-  { name: "James Brown", email: "james@example.com", plan: "Pro", status: "Active", date: "1 day ago", avatar: "JB" },
-  { name: "Anna Martinez", email: "anna@example.com", plan: "Free", status: "Inactive", date: "2 days ago", avatar: "AM" },
+  { name: "Sarah Johnson", email: "sarah@example.com", status: "Active", date: "2 min ago", avatar: "SJ" },
+  { name: "Marcus Lee", email: "marcus@example.com", status: "Active", date: "15 min ago", avatar: "ML" },
+  { name: "Emily Chen", email: "emily@example.com", status: "Active", date: "1 hour ago", avatar: "EC" },
+  { name: "David Kim", email: "david@example.com", status: "Inactive", date: "3 hours ago", avatar: "DK" },
+  { name: "Lisa Wang", email: "lisa@example.com", status: "Active", date: "5 hours ago", avatar: "LW" },
+  { name: "James Brown", email: "james@example.com", status: "Active", date: "1 day ago", avatar: "JB" },
+  { name: "Anna Martinez", email: "anna@example.com", status: "Inactive", date: "2 days ago", avatar: "AM" },
 ]
 
 const toolUsage = [
@@ -72,12 +71,6 @@ const toolUsage = [
   { name: "Document", usage: 45 },
   { name: "Video Tools", usage: 32 },
   { name: "Security", usage: 28 },
-]
-
-const subscriptions = [
-  { plan: "Free", count: 8452, percentage: 65.8, color: "bg-muted-foreground/30" },
-  { plan: "Pro", count: 3560, percentage: 27.7, color: "bg-primary" },
-  { plan: "Enterprise", count: 835, percentage: 6.5, color: "bg-violet-500" },
 ]
 
 const quickActions = [
@@ -101,7 +94,7 @@ export default function AdminPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Monitor your platform's performance and manage users
+              Monitor your platform performance and manage users
             </p>
           </div>
           <Button size="sm" icon={<RefreshCw className="h-4 w-4" />}>
@@ -117,7 +110,7 @@ export default function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
             >
-              <Card padding="md" hover="lift">
+              <Card className="transition-shadow hover:shadow-md">
                 <div className="flex items-start justify-between">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.color}`}>
                     <stat.icon className="h-5 w-5" />
@@ -143,7 +136,7 @@ export default function AdminPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card padding="md">
+          <Card>
             <CardHeader>
               <CardTitle>Recent Users</CardTitle>
             </CardHeader>
@@ -162,13 +155,6 @@ export default function AdminPage() {
                       <div className="text-xs text-muted-foreground truncate">{user.email}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        user.plan === "Pro" ? "bg-primary/10 text-primary" :
-                        user.plan === "Enterprise" ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {user.plan}
-                      </span>
                       <span className={`flex items-center gap-1 text-[10px] ${
                         user.status === "Active" ? "text-emerald-500" : "text-muted-foreground"
                       }`}>
@@ -189,7 +175,7 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
-          <Card padding="md">
+          <Card>
             <CardHeader>
               <CardTitle>Tool Usage</CardTitle>
             </CardHeader>
@@ -206,7 +192,7 @@ export default function AdminPage() {
                         initial={{ width: 0 }}
                         animate={{ width: `${tool.usage}%` }}
                         transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
-                        className="h-full rounded-full bg-gradient-to-r from-primary to-violet-500"
+                        className="h-full rounded-full bg-gradient-to-r from-primary to-cyan-500"
                       />
                     </div>
                   </div>
@@ -217,59 +203,33 @@ export default function AdminPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card padding="md">
+          <Card>
             <CardHeader>
-              <CardTitle>Subscription Breakdown</CardTitle>
+              <CardTitle>Platform Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-center py-4">
-                <div className="relative h-32 w-32">
-                  <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
-                    {subscriptions.map((sub, i) => {
-                      let offset = 0
-                      for (let j = 0; j < i; j++) offset += subscriptions[j].percentage
-                      return (
-                        <circle
-                          key={sub.plan}
-                          cx="18"
-                          cy="18"
-                          r="15.915"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeDasharray={`${sub.percentage} ${100 - sub.percentage}`}
-                          strokeDashoffset={-offset * (100 / 100)}
-                          className={sub.color.replace("bg-", "text-")}
-                        />
-                      )
-                    })}
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-foreground">12.8K</div>
-                      <div className="text-[10px] text-muted-foreground">Total</div>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl border border-border p-4">
+                  <div className="text-sm text-muted-foreground">Total Tools</div>
+                  <div className="text-2xl font-bold text-foreground mt-1">186</div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                {subscriptions.map((sub) => (
-                  <div key={sub.plan} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${sub.color}`} />
-                      <span className="text-foreground">{sub.plan}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-muted-foreground">{sub.count.toLocaleString()}</span>
-                      <span className="text-xs font-medium text-foreground">{sub.percentage}%</span>
-                    </div>
-                  </div>
-                ))}
+                <div className="rounded-xl border border-border p-4">
+                  <div className="text-sm text-muted-foreground">Categories</div>
+                  <div className="text-2xl font-bold text-foreground mt-1">11</div>
+                </div>
+                <div className="rounded-xl border border-border p-4">
+                  <div className="text-sm text-muted-foreground">Avg. Session</div>
+                  <div className="text-2xl font-bold text-foreground mt-1">12m</div>
+                </div>
+                <div className="rounded-xl border border-border p-4">
+                  <div className="text-sm text-muted-foreground">Uptime</div>
+                  <div className="text-2xl font-bold text-foreground mt-1">99.9%</div>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card padding="md">
+          <Card>
             <CardHeader>
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>

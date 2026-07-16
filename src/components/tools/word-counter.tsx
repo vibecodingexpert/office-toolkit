@@ -16,7 +16,7 @@ import {
   Clock,
   Mic,
   RotateCcw,
-  BarChart3,
+  ChartBarBig,
   FileText,
 } from "lucide-react"
 
@@ -177,7 +177,7 @@ export function WordCounter() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <StatCard icon={Type} label="Words" value={stats.words.toLocaleString()} color="bg-blue-500/10 text-blue-500" />
         <StatCard icon={Hash} label="Characters" value={stats.characters.toLocaleString()} color="bg-violet-500/10 text-violet-500" />
-        <StatCard icon={BarChart3} label="Chars (no space)" value={stats.charactersNoSpaces.toLocaleString()} color="bg-emerald-500/10 text-emerald-500" />
+        <StatCard icon={ChartBarBig} label="Chars (no space)" value={stats.charactersNoSpaces.toLocaleString()} color="bg-emerald-500/10 text-emerald-500" />
         <StatCard icon={FileText} label="Sentences" value={stats.sentences.toLocaleString()} color="bg-amber-500/10 text-amber-500" />
         <StatCard icon={BookOpen} label="Paragraphs" value={stats.paragraphs.toLocaleString()} color="bg-rose-500/10 text-rose-500" />
         <StatCard icon={BookOpen} label="Lines" value={stats.lines.toLocaleString()} color="bg-indigo-500/10 text-indigo-500" />

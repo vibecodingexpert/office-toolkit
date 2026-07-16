@@ -83,7 +83,7 @@ export function PayslipGenerator() {
     <div className="mx-auto max-w-5xl space-y-8">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/10"><FileText className="h-6 w-6 text-cyan-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Payslip Generator</h1><p className="text-sm text-muted-foreground">Generate employee payslips</p></div></div>
-        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="pro" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
+        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
       </motion.div>
 
       <AnimatePresence mode="wait">

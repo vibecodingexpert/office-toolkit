@@ -10,13 +10,13 @@ import {
   Files,
   Trash2,
   Search,
-  CheckCircle2,
+  CircleCheck,
   AlertCircle,
   File,
   FileText,
   FileImage,
-  FileAudio,
-  FileVideo,
+  FileMusic,
+  FileVideoCamera,
   Filter,
   Layers,
 } from "lucide-react"
@@ -25,8 +25,8 @@ function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase()
   if (["txt", "pdf", "doc", "docx", "md"].includes(ext || "")) return <FileText className="h-4 w-4" />
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "")) return <FileImage className="h-4 w-4" />
-  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileAudio className="h-4 w-4" />
-  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideo className="h-4 w-4" />
+  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileMusic className="h-4 w-4" />
+  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideoCamera className="h-4 w-4" />
   return <File className="h-4 w-4" />
 }
 
@@ -303,7 +303,7 @@ export function DuplicateFinder() {
           animate={{ opacity: 1, y: 0 }}
           className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center"
         >
-          <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+          <CircleCheck className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
           <p className="text-sm text-foreground">No duplicates found!</p>
           <p className="text-xs text-muted-foreground mt-1">All files are unique</p>
         </motion.div>

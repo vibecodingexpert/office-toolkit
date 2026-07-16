@@ -1,4 +1,4 @@
-import type { Tool, Category, PricingPlan, Testimonial } from "@/types"
+import type { Tool, Category, Testimonial } from "@/types"
 
 export const categories: Category[] = [
   {
@@ -119,15 +119,15 @@ export const tools: Tool[] = [
   { id: "jpg-to-pdf", name: "JPG to PDF", description: "Convert JPG images to PDF", icon: "FileImage", category: "pdf", slug: "jpg-to-pdf", isPopular: true, color: "#ef4444" },
 
   // Image Tools
-  { id: "background-remover", name: "Background Remover", description: "Remove image backgrounds automatically", icon: "ImageOff", category: "image", slug: "background-remover", isPopular: true, isPro: true, color: "#f59e0b" },
+  { id: "background-remover", name: "Background Remover", description: "Remove image backgrounds automatically", icon: "ImageOff", category: "image", slug: "background-remover", isPopular: true, isPro: false, color: "#f59e0b" },
   { id: "image-compressor", name: "Image Compressor", description: "Compress images without losing quality", icon: "FileDown", category: "image", slug: "image-compressor", isPopular: true, color: "#f59e0b" },
-  { id: "image-upscaler", name: "Image Upscaler", description: "Upscale images with AI enhancement", icon: "ZoomIn", category: "image", slug: "image-upscaler", isPro: true, color: "#f59e0b" },
+  { id: "image-upscaler", name: "Image Upscaler", description: "Upscale images with AI enhancement", icon: "ZoomIn", category: "image", slug: "image-upscaler", isPro: false, color: "#f59e0b" },
   { id: "resize-image", name: "Resize Image", description: "Resize images to exact dimensions", icon: "Maximize", category: "image", slug: "resize-image", isPopular: true, color: "#f59e0b" },
   { id: "crop-image", name: "Crop Image", description: "Crop images to any aspect ratio", icon: "Crop", category: "image", slug: "crop-image", color: "#f59e0b" },
   { id: "rotate-image", name: "Rotate Image", description: "Rotate images by any angle", icon: "RotateCw", category: "image", slug: "rotate-image", color: "#f59e0b" },
   { id: "flip-image", name: "Flip Image", description: "Flip images horizontally or vertically", icon: "FlipHorizontal", category: "image", slug: "flip-image", color: "#f59e0b" },
   { id: "blur-background", name: "Blur Background", description: "Blur image backgrounds with precision", icon: "Blur", category: "image", slug: "blur-background", color: "#f59e0b" },
-  { id: "ai-enhance", name: "AI Enhance", description: "Enhance image quality with AI", icon: "Sparkles", category: "image", slug: "ai-enhance", isPro: true, color: "#f59e0b" },
+  { id: "ai-enhance", name: "AI Enhance", description: "Enhance image quality with AI", icon: "Sparkles", category: "image", slug: "ai-enhance", isPro: false, color: "#f59e0b" },
   { id: "image-to-png", name: "Image to PNG", description: "Convert any image format to PNG", icon: "FileImage", category: "image", slug: "image-to-png", isPopular: true, color: "#f59e0b" },
   { id: "png-to-jpg", name: "PNG to JPG", description: "Convert PNG images to JPG format", icon: "FileImage", category: "image", slug: "png-to-jpg", color: "#f59e0b" },
   { id: "jpg-to-webp", name: "JPG to WebP", description: "Convert JPG to modern WebP format", icon: "FileImage", category: "image", slug: "jpg-to-webp", color: "#f59e0b" },
@@ -219,14 +219,14 @@ export const tools: Tool[] = [
   { id: "audio-cutter", name: "Audio Cutter", description: "Cut and trim audio files", icon: "Scissors", category: "audio", slug: "audio-cutter", color: "#ec4899" },
   { id: "merge-audio", name: "Merge Audio", description: "Combine multiple audio files", icon: "Files", category: "audio", slug: "merge-audio", color: "#ec4899" },
   { id: "volume-booster", name: "Volume Booster", description: "Increase audio volume", icon: "Volume2", category: "audio", slug: "volume-booster", color: "#ec4899" },
-  { id: "noise-remover", name: "Noise Remover", description: "Remove background noise from audio", icon: "EarOff", category: "audio", slug: "noise-remover", isPro: true, color: "#ec4899" },
+  { id: "noise-remover", name: "Noise Remover", description: "Remove background noise from audio", icon: "EarOff", category: "audio", slug: "noise-remover", isPro: false, color: "#ec4899" },
   { id: "voice-recorder", name: "Voice Recorder", description: "Record audio directly in browser", icon: "Mic", category: "audio", slug: "voice-recorder", color: "#ec4899" },
 
   // Business Tools
   { id: "invoice-generator", name: "Invoice Generator", description: "Create professional invoices", icon: "FileText", category: "business", slug: "invoice-generator", isPopular: true, color: "#14b8a6" },
   { id: "quotation-generator", name: "Quotation Generator", description: "Create business quotations", icon: "FileText", category: "business", slug: "quotation-generator", color: "#14b8a6" },
   { id: "receipt-generator", name: "Receipt Generator", description: "Generate receipts instantly", icon: "Receipt", category: "business", slug: "receipt-generator", color: "#14b8a6" },
-  { id: "resume-builder", name: "Resume Builder", description: "Build professional resumes", icon: "FileUser", category: "business", slug: "resume-builder", isPopular: true, isPro: true, color: "#14b8a6" },
+  { id: "resume-builder", name: "Resume Builder", description: "Build professional resumes", icon: "FileUser", category: "business", slug: "resume-builder", isPopular: true, isPro: false, color: "#14b8a6" },
   { id: "cv-builder", name: "CV Builder", description: "Create comprehensive CVs", icon: "FileUser", category: "business", slug: "cv-builder", color: "#14b8a6" },
   { id: "cover-letter-builder", name: "Cover Letter Builder", description: "Write professional cover letters", icon: "FileEdit", category: "business", slug: "cover-letter-builder", color: "#14b8a6" },
   { id: "business-card-maker", name: "Business Card Maker", description: "Design business cards", icon: "IdCard", category: "business", slug: "business-card-maker", color: "#14b8a6" },
@@ -273,7 +273,7 @@ export const tools: Tool[] = [
   { id: "bug-fixer", name: "Bug Fixer", description: "Fix bugs with AI assistance", icon: "Bug", category: "ai", slug: "bug-fixer", color: "#f97316" },
   { id: "prompt-generator", name: "Prompt Generator", description: "Generate AI prompts", icon: "Sparkles", category: "ai", slug: "prompt-generator", color: "#f97316" },
   { id: "prompt-improver", name: "Prompt Improver", description: "Improve your AI prompts", icon: "Sparkles", category: "ai", slug: "prompt-improver", color: "#f97316" },
-  { id: "resume-ai", name: "Resume AI", description: "Optimize resume with AI", icon: "FileUser", category: "ai", slug: "resume-ai", isPro: true, color: "#f97316" },
+  { id: "resume-ai", name: "Resume AI", description: "Optimize resume with AI", icon: "FileUser", category: "ai", slug: "resume-ai", isPro: false, color: "#f97316" },
   { id: "cover-letter-ai", name: "Cover Letter AI", description: "Write cover letters with AI", icon: "FileEdit", category: "ai", slug: "cover-letter-ai", color: "#f97316" },
   { id: "meeting-notes", name: "Meeting Notes", description: "Generate meeting notes with AI", icon: "StickyNote", category: "ai", slug: "meeting-notes", color: "#f97316" },
   { id: "speech-to-text", name: "Speech to Text", description: "Convert speech to text", icon: "Mic", category: "ai", slug: "speech-to-text", isNew: true, color: "#f97316" },
@@ -303,7 +303,6 @@ export const tools: Tool[] = [
 
 export const popularTools = tools.filter((t) => t.isPopular)
 export const newTools = tools.filter((t) => t.isNew)
-export const proTools = tools.filter((t) => t.isPro)
 
 export function getToolBySlug(slug: string): Tool | undefined {
   return tools.find((t) => t.slug === slug)
@@ -321,63 +320,6 @@ export function searchTools(query: string): Tool[] {
       t.description.toLowerCase().includes(q)
   )
 }
-
-export const pricingPlans: PricingPlan[] = [
-  {
-    id: "free",
-    name: "Free",
-    description: "Essential tools for getting started",
-    price: 0,
-    currency: "USD",
-    interval: "month",
-    features: [
-      "50+ free tools",
-      "Basic file conversion",
-      "5 downloads per day",
-      "Standard quality",
-      "Community support",
-    ],
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    description: "Unlock all tools and premium features",
-    price: 12,
-    currency: "USD",
-    interval: "month",
-    features: [
-      "All 100+ tools",
-      "Unlimited downloads",
-      "AI-powered features",
-      "Batch processing",
-      "HD quality exports",
-      "Priority support",
-      "No watermarks",
-      "Advanced analytics",
-    ],
-    highlighted: true,
-    badge: "Popular",
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    description: "For teams and organizations",
-    price: 49,
-    currency: "USD",
-    interval: "month",
-    features: [
-      "Everything in Pro",
-      "Team collaboration",
-      "API access",
-      "Custom branding",
-      "SSO integration",
-      "Audit logs",
-      "Dedicated support",
-      "SLA guarantee",
-      "Custom tools",
-    ],
-  },
-]
 
 export const testimonials: Testimonial[] = [
   {

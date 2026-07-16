@@ -8,7 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, Music, Video, Check, X, FileAudio,
+  Upload, Download, Music, Video, Check, X, FileMusic,
 } from "lucide-react"
 
 function formatSize(bytes: number): string {
@@ -213,7 +213,7 @@ export function ExtractAudio() {
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
-                  <FileAudio className="h-5 w-5 text-emerald-500" />
+                  <FileMusic className="h-5 w-5 text-emerald-500" />
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-foreground">Audio Extracted</p>

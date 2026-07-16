@@ -89,7 +89,7 @@ export function CvBuilder() {
     <div className="mx-auto max-w-5xl space-y-8">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10"><Download className="h-6 w-6 text-violet-500" /></div><div><h1 className="text-2xl font-bold text-foreground">CV Builder</h1><p className="text-sm text-muted-foreground">Create comprehensive CVs</p></div></div>
-        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="pro" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
+        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
       </motion.div>
       <div className="flex flex-wrap gap-2">{TEMPLATES.map((t) => (<button key={t.id} onClick={() => setTemplate(t.id)} className={cn("flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors", template === t.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50")}><div className={cn("h-3 w-3 rounded-full", t.color)} />{t.name}</button>))}</div>
 

@@ -105,7 +105,7 @@ END:VCARD`
     <div className="mx-auto max-w-5xl space-y-8">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10"><QrCode className="h-6 w-6 text-teal-500" /></div><div><h1 className="text-2xl font-bold text-foreground">QR Business Card</h1><p className="text-sm text-muted-foreground">Digital business cards with QR</p></div></div>
-        <Button variant="pro" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button>
+        <Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button>
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-2">

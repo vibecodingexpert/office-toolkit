@@ -12,10 +12,10 @@ import {
   File,
   FileText,
   FileImage,
-  FileAudio,
-  FileVideo,
+  FileMusic,
+  FileVideoCamera,
   AlertCircle,
-  CheckCircle2,
+  CircleCheck,
   ArrowRight,
   Upload,
 } from "lucide-react"
@@ -53,7 +53,7 @@ const formatCategories: FormatCategory[] = [
   },
   {
     name: "Audio",
-    icon: <FileAudio className="h-4 w-4" />,
+    icon: <FileMusic className="h-4 w-4" />,
     formats: [
       { ext: "mp3", name: "MP3", mime: "audio/mpeg" },
       { ext: "wav", name: "WAV", mime: "audio/wav" },
@@ -63,7 +63,7 @@ const formatCategories: FormatCategory[] = [
   },
   {
     name: "Video",
-    icon: <FileVideo className="h-4 w-4" />,
+    icon: <FileVideoCamera className="h-4 w-4" />,
     formats: [
       { ext: "mp4", name: "MP4", mime: "video/mp4" },
       { ext: "webm", name: "WebM", mime: "video/webm" },
@@ -292,7 +292,7 @@ export function FileConverter() {
           >
             <div className="flex justify-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10">
-                <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                <CircleCheck className="h-8 w-8 text-emerald-500" />
               </div>
             </div>
             <div>

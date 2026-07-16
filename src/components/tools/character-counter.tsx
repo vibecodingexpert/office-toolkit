@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, Hash, RotateCcw, BarChart3 } from "lucide-react"
+import { Copy, Check, Hash, RotateCcw, ChartBarBig } from "lucide-react"
 
 function getCharFrequency(text: string): [string, number][] {
   const freq: Record<string, number> = {}
@@ -96,7 +96,7 @@ export function CharacterCounter() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+              <ChartBarBig className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">Character Frequency</span>
             </div>
             <div className="text-xs text-muted-foreground">

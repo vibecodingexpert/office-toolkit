@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, FileEdit, RotateCcw } from "lucide-react"
+import { Copy, Check, FilePen, RotateCcw } from "lucide-react"
 
 const TEXT_COLORS = [
   { label: "Default", value: "inherit" },
@@ -95,7 +95,7 @@ export function RichTextEditor() {
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <FileEdit className="h-5 w-5 text-primary" />
+          <FilePen className="h-5 w-5 text-primary" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">Rich Text Editor</h2>
@@ -177,7 +177,7 @@ export function RichTextEditor() {
         <Button variant="outline" onClick={handleExportHtml} icon={<Code className="h-4 w-4" />}>
           Export HTML
         </Button>
-        <Button variant="outline" onClick={handleExportText} icon={<FileEdit className="h-4 w-4" />}>
+        <Button variant="outline" onClick={handleExportText} icon={<FilePen className="h-4 w-4" />}>
           Export Plain Text
         </Button>
         <Button variant="secondary" onClick={handleCopyHtml} icon={copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}>

@@ -9,7 +9,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  FileEdit,
+  FilePen,
   Copy,
   Check,
   Sparkles,
@@ -132,7 +132,7 @@ export function CoverLetterAi() {
         className="flex items-center gap-3"
       >
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 shadow-sm">
-          <FileEdit className="h-6 w-6 text-primary" />
+          <FilePen className="h-6 w-6 text-primary" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Cover Letter AI</h1>

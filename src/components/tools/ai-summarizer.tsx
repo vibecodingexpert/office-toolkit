@@ -12,7 +12,7 @@ import {
   Check,
   Sparkles,
   ListChecks,
-  BarChart3,
+  ChartBarBig,
   TextQuote,
   RotateCcw,
 } from "lucide-react"
@@ -232,7 +232,7 @@ export function AiSummarizer() {
               className="flex items-center justify-center gap-6 rounded-2xl border border-border bg-card p-4 shadow-sm"
             >
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                <ChartBarBig className="h-4 w-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">
                   Original: <strong className="text-foreground">{originalWords}</strong> words
                 </span>
@@ -244,7 +244,7 @@ export function AiSummarizer() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-emerald-500" />
+                <ChartBarBig className="h-4 w-4 text-emerald-500" />
                 <span className="text-xs text-muted-foreground">
                   Reduced by: <strong className="text-emerald-500">{reduction}%</strong>
                 </span>

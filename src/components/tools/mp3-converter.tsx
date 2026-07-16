@@ -8,7 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, FileAudio, Check, X, Music,
+  Upload, Download, FileMusic, Check, X, Music,
 } from "lucide-react"
 
 function formatSize(bytes: number): string {
@@ -91,7 +91,7 @@ export function Mp3Converter() {
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
-          <FileAudio className="h-5 w-5 text-pink-500" />
+                  <FileMusic className="h-5 w-5 text-pink-500" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">MP3 Converter</h2>
@@ -167,7 +167,7 @@ export function Mp3Converter() {
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
-                  <FileAudio className="h-5 w-5 text-pink-500" />
+          <FileMusic className="h-5 w-5 text-pink-500" />
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-foreground">MP3 Ready</p>
@@ -181,7 +181,7 @@ export function Mp3Converter() {
           )}
 
           {!isProcessing && !convertedUrl && (
-            <Button onClick={convert} size="lg" className="w-full" icon={<FileAudio className="h-4 w-4" />}>
+            <Button onClick={convert} size="lg" className="w-full" icon={<FileMusic className="h-4 w-4" />}>
               Convert to MP3
             </Button>
           )}

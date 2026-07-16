@@ -8,7 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, FileVideo, FileImage, Check, X, Video,
+  Upload, Download, FileVideoCamera, FileImage, Check, X, Video,
 } from "lucide-react"
 
 function formatSize(bytes: number): string {
@@ -101,7 +101,7 @@ export function GifToMp4() {
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
-          <FileVideo className="h-5 w-5 text-emerald-500" />
+          <FileVideoCamera className="h-5 w-5 text-emerald-500" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">GIF to MP4</h2>
@@ -199,7 +199,7 @@ export function GifToMp4() {
           )}
 
           {!isProcessing && !mp4Url && (
-            <Button onClick={convert} size="lg" className="w-full" icon={<FileVideo className="h-4 w-4" />}>
+            <Button onClick={convert} size="lg" className="w-full" icon={<FileVideoCamera className="h-4 w-4" />}>
               Convert to MP4
             </Button>
           )}

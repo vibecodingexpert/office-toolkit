@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
-import { Download, Image, Palette, Type, Layout } from "lucide-react"
+import { Download, Image, Palette, Type, LayoutGrid } from "lucide-react"
 
 const FONTS = [
   { value: "Inter, sans-serif", label: "Inter" },
@@ -57,8 +57,8 @@ export function BusinessCardMaker() {
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-yellow-500/10"><Layout className="h-6 w-6 text-yellow-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Business Card Maker</h1><p className="text-sm text-muted-foreground">Design business cards</p></div></div>
-        <Button variant="pro" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download PNG</Button>
+        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-yellow-500/10"><LayoutGrid className="h-6 w-6 text-yellow-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Business Card Maker</h1><p className="text-sm text-muted-foreground">Design business cards</p></div></div>
+        <Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download PNG</Button>
       </motion.div>
 
       <Card padding="lg">

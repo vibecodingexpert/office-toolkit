@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, Braces, RotateCcw, Indent, Shrink } from "lucide-react"
+import { Copy, Check, Braces, RotateCcw, ListIndentIncrease, Shrink } from "lucide-react"
 
 function formatXml(xml: string): string {
   const trimmed = xml.trim()
@@ -231,7 +231,7 @@ export function XmlFormatter() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Button onClick={() => processXml("format")} loading={loading} icon={<Indent className="h-4 w-4" />}>
+        <Button onClick={() => processXml("format")} loading={loading} icon={<ListIndentIncrease className="h-4 w-4" />}>
           Format
         </Button>
         <Button variant="outline" onClick={() => processXml("minify")} icon={<Shrink className="h-4 w-4" />}>

@@ -10,7 +10,7 @@ import {
   Unlock,
   Download,
   AlertCircle,
-  CheckCircle2,
+  CircleCheck,
   File,
   Eye,
   EyeOff,
@@ -193,7 +193,7 @@ export function FileDecrypt() {
           >
             <div className="flex justify-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10">
-                <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                <CircleCheck className="h-8 w-8 text-emerald-500" />
               </div>
             </div>
             <div>

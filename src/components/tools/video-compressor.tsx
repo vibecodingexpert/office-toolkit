@@ -8,7 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, FileVideo, Check, X, FileDown, Sliders, Video,
+  Upload, Download, FileVideoCamera, Check, X, FileDown, Sliders, Video,
 } from "lucide-react"
 
 interface FileItem {

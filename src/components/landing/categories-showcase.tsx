@@ -21,23 +21,6 @@ const iconMap: Record<string, LucideIcon> = {
   Wrench: Icons.Wrench,
 }
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06 },
-  },
-}
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 30 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
-  },
-}
-
 export function CategoriesShowcase() {
   return (
     <section id="categories" className="relative py-24 sm:py-32 bg-muted/30">
@@ -53,16 +36,14 @@ export function CategoriesShowcase() {
             Browse by category
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Organized collections of tools designed for specific tasks.
-            Find exactly what you need, faster.
+            Find exactly what you need with our organized tool collections.
           </p>
         </motion.div>
-
         <motion.div
-          variants={containerVariants}
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
+          transition={{ staggerChildren: 0.06 }}
           className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
         >
           {categories.slice(0, 8).map((category) => {
@@ -70,7 +51,10 @@ export function CategoriesShowcase() {
             return (
               <motion.div
                 key={category.id}
-                variants={cardVariants}
+                variants={{
+                  hidden: { opacity: 0, y: 30 },
+                  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+                }}
                 whileHover={{ y: -4, transition: { duration: 0.2 } }}
               >
                 <Link
@@ -81,31 +65,18 @@ export function CategoriesShowcase() {
                     className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
                     style={{ backgroundColor: `${category.color}15` }}
                   >
-                    <Icon
-                      className="h-6 w-6 transition-transform group-hover:scale-110"
-                      style={{ color: category.color }}
-                    />
+                    <Icon className="h-6 w-6 transition-transform group-hover:scale-110" style={{ color: category.color }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-foreground truncate">
-                        {category.name}
-                      </h3>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {category.toolCount} tools
-                    </p>
+                    <h3 className="text-sm font-semibold text-foreground truncate">{category.name}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{category.toolCount} tools</p>
                   </div>
-                  <ArrowRight
-                    className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5"
-                    style={{ color: category.color }}
-                  />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5" style={{ color: category.color }} />
                 </Link>
               </motion.div>
             )
           })}
         </motion.div>
-
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}

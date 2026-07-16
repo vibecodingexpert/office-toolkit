@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils/cn"
-import { Calculator, PieChart as PieChartIcon } from "lucide-react"
+import { Calculator, ChartPie as PieChartIcon } from "lucide-react"
 
 export function EmiCalculator() {
   const [amount, setAmount] = React.useState("100000")

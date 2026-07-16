@@ -7,15 +7,15 @@ import { Button } from "@/components/ui/button"
 import { FileUpload } from "@/components/ui/file-upload"
 import { ProgressBar } from "@/components/ui/progress-bar"
 import {
-  FileEdit,
+  FilePen,
   Download,
   File,
-  CheckCircle2,
+  CircleCheck,
   AlertCircle,
   FileText,
   FileImage,
-  FileAudio,
-  FileVideo,
+  FileMusic,
+  FileVideoCamera,
   ArrowRight,
   Lightbulb,
 } from "lucide-react"
@@ -24,8 +24,8 @@ function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase()
   if (["txt", "pdf", "doc", "docx", "md"].includes(ext || "")) return <FileText className="h-4 w-4" />
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "")) return <FileImage className="h-4 w-4" />
-  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileAudio className="h-4 w-4" />
-  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideo className="h-4 w-4" />
+  if (["mp3", "wav", "ogg", "flac"].includes(ext || "")) return <FileMusic className="h-4 w-4" />
+  if (["mp4", "avi", "mkv", "mov"].includes(ext || "")) return <FileVideoCamera className="h-4 w-4" />
   return <File className="h-4 w-4" />
 }
 
@@ -129,7 +129,7 @@ export function RenameFiles() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10">
-          <FileEdit className="h-5 w-5 text-amber-500" />
+          <FilePen className="h-5 w-5 text-amber-500" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">Rename Files</h2>
@@ -224,7 +224,7 @@ export function RenameFiles() {
                   fullWidth
                   size="lg"
                 >
-                  <FileEdit className="h-4 w-4" />
+                  <FilePen className="h-4 w-4" />
                   Rename {files.length} file{files.length !== 1 ? "s" : ""}
                 </Button>
               </motion.div>
@@ -255,7 +255,7 @@ export function RenameFiles() {
           >
             <div className="flex justify-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10">
-                <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                <CircleCheck className="h-8 w-8 text-emerald-500" />
               </div>
             </div>
             <div>

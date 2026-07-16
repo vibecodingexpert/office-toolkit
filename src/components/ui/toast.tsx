@@ -3,7 +3,7 @@
 import { Toaster as SonnerToaster, toast } from "sonner"
 import { cn } from "@/lib/utils/cn"
 import {
-  CheckCircle2,
+  CircleCheck,
   XCircle,
   AlertCircle,
   Info,
@@ -36,7 +36,7 @@ export function Toaster({ className }: ToastProps) {
         },
       }}
       icons={{
-        success: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
+        success: <CircleCheck className="h-5 w-5 text-emerald-500" />,
         error: <XCircle className="h-5 w-5 text-destructive" />,
         info: <Info className="h-5 w-5 text-primary" />,
         warning: <AlertCircle className="h-5 w-5 text-amber-500" />,

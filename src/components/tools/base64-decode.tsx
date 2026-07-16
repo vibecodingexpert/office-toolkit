@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, RotateCcw, FileCode2 } from "lucide-react"
+import { Copy, Check, RotateCcw, FileCode } from "lucide-react"
 
 export function Base64Decode() {
   const [input, setInput] = React.useState("")
@@ -56,7 +56,7 @@ export function Base64Decode() {
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <FileCode2 className="h-5 w-5 text-primary" />
+          <FileCode className="h-5 w-5 text-primary" />
         </div>
         <div>
           <h2 className="text-lg font-semibold">Base64 Decode</h2>
@@ -78,7 +78,7 @@ export function Base64Decode() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Button onClick={handleDecode} loading={loading} icon={<FileCode2 className="h-4 w-4" />}>
+        <Button onClick={handleDecode} loading={loading} icon={<FileCode className="h-4 w-4" />}>
           Decode
         </Button>
         {input && (

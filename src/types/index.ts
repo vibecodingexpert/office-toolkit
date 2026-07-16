@@ -39,7 +39,6 @@ export interface User {
   email: string
   name: string
   avatar?: string
-  plan: "free" | "pro" | "enterprise"
   createdAt: Date
 }
 
@@ -53,18 +52,6 @@ export interface RecentTool {
   toolId: string
   userId: string
   lastUsed: Date
-}
-
-export interface PricingPlan {
-  id: string
-  name: string
-  description: string
-  price: number
-  currency: string
-  interval: "month" | "year"
-  features: string[]
-  highlighted?: boolean
-  badge?: string
 }
 
 export interface Testimonial {

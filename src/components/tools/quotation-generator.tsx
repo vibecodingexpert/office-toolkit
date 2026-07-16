@@ -150,7 +150,7 @@ export function QuotationGenerator() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showPreview ? "Edit" : "Preview"}</Button>
-          <Button variant="pro" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button>
+          <Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button>
         </div>
       </motion.div>
 

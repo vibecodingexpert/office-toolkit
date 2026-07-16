@@ -12,7 +12,7 @@ import {
   Pause,
   Play,
   Trash2,
-  CheckCircle2,
+  CircleCheck,
   AlertCircle,
   Clock,
   FileDown,
@@ -222,7 +222,7 @@ export function DownloadManager() {
             >
               {tab === "all" && <List className="h-3 w-3" />}
               {tab === "active" && <Loader2 className="h-3 w-3" />}
-              {tab === "completed" && <CheckCircle2 className="h-3 w-3" />}
+              {tab === "completed" && <CircleCheck className="h-3 w-3" />}
               {tab} ({count})
             </button>
           )
@@ -328,7 +328,7 @@ export function DownloadManager() {
                     )}
                     {item.status === "completed" && (
                       <span className="flex items-center gap-1 text-emerald-500">
-                        <CheckCircle2 className="h-3 w-3" /> Completed
+                        <CircleCheck className="h-3 w-3" /> Completed
                       </span>
                     )}
                     {item.status === "failed" && (

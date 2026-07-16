@@ -2,12 +2,13 @@
 
 import * as React from "react"
 import { useParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import { motion } from "framer-motion"
 import { getToolBySlug } from "@/lib/utils/tools-data"
 import { useToolStore } from "@/lib/store/use-tool-store"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, FileQuestion } from "lucide-react"
+import { ArrowLeft, FileQuestion, ChevronRight, Home } from "lucide-react"
 import type { Tool } from "@/types"
 
 import { PdfToWord } from "@/components/tools/pdf-to-word"
@@ -408,7 +409,71 @@ export default function ToolPage() {
     )
   }
 
+  const category = tool.category
   const ToolComponent = toolComponentMap[slug] || GenericToolComponent
 
-  return <ToolComponent tool={tool} />
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Breadcrumb */}
+      <nav className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+        <Link
+          href="/"
+          className="flex items-center gap-1 transition-colors hover:text-foreground"
+        >
+          <Home className="h-3.5 w-3.5" />
+          Home
+        </Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <Link
+          href="/tools"
+          className="transition-colors hover:text-foreground"
+        >
+          Tools
+        </Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="text-foreground">{tool.name}</span>
+      </nav>
+
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8"
+      >
+        <button
+          onClick={() => router.push("/tools")}
+          className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to all tools
+        </button>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              {tool.name}
+            </h1>
+            <p className="mt-1 text-muted-foreground">
+              {tool.description}
+            </p>
+          </div>
+          <span
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white"
+            style={{ backgroundColor: tool.color || "#0d9488" }}
+          >
+            {category.charAt(0).toUpperCase() + category.slice(1)}
+          </span>
+        </div>
+      </motion.div>
+
+      {/* Tool Component */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+      >
+        <ToolComponent tool={tool} />
+      </motion.div>
+    </div>
+  )
 }
