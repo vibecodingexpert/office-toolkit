@@ -33,77 +33,148 @@ interface Chat {
   createdAt: number
 }
 
-const RESPONSES: Record<string, string[]> = {
-  hello: [
-    "Hello! How can I assist you today? Feel free to ask me anything about writing, coding, analysis, or general questions.",
-    "Hi there! I'm your AI assistant. What can I help you with?",
-    "Hey! I'm ready to help. Ask me anything!",
-    "Greetings! I'm here and ready to assist you with any task.",
-  ],
-  help: [
-    "I can help you with a wide range of tasks:\n\n- **Writing & Editing**: Draft emails, blog posts, reports\n- **Coding**: Generate, explain, debug code\n- **Analysis**: Summarize text, extract insights\n- **General Q&A**: Answer questions on various topics\n\nWhat would you like help with today?",
-    "Sure! I'm here to assist. Some things I can do:\n\n1. Write and improve content\n2. Generate and explain code\n3. Analyze and summarize information\n4. Answer questions and brainstorm ideas\n\nJust tell me what you need!",
-    "Happy to help! I specialize in:\n\n✍️ Writing & Editing\n💻 Code Generation & Review\n📊 Analysis & Summarization\n💡 Brainstorming & Ideas\n\nWhat sounds good to you?",
-  ],
-  write: [
-    "I'd be happy to help you write! Could you provide more details about what you'd like me to write? For example:\n\n- **Topic/Theme**: What's it about?\n- **Format**: Email, blog post, essay, story?\n- **Tone**: Professional, casual, creative?\n- **Length**: Short, medium, long?\n\nThe more context you give, the better I can tailor the content!",
-    "Great, let's write something together! Share the topic, format, tone, and any specific points you want covered. I'll craft something compelling for you.",
-    "Writing is my specialty! Tell me:\n- What do you want to write?\n- Who's the audience?\n- What tone should I use?\n- Any key points to include?",
-  ],
-  code: [
-    "I can help with code! Tell me what you need:\n\n- **Language**: JavaScript, Python, TypeScript, etc.\n- **What it should do**: Describe the functionality\n- **Constraints**: Any specific requirements\n\nI'll generate clean, well-structured code for you.",
-    "Let's code! Share the programming language and what you want to build. I'll write efficient, readable code with explanations.",
-    "Ready to write some code. Which language? What should it do? Any specific requirements or constraints?",
-  ],
-  explain: [
-    "I'd be glad to explain that! Here's a breakdown:\n\n1. **What it is**: A clear definition\n2. **How it works**: The underlying mechanism\n3. **Why it matters**: Real-world significance\n4. **Example**: Practical illustration\n\nDoes this help? Feel free to ask for more detail on any part!",
-    "Sure, let me explain! The key idea is straightforward once broken down into core components. Think of it as building blocks that work together to achieve a specific goal. Would you like me to go deeper into any specific aspect?",
-    "Great question! Let me break this down into simple parts:\n\n**Core Concept**: First, understand what this really means\n**How It Works**: The mechanism behind it\n**Why It Matters**: Real-world application\n**Example**: See it in action",
-  ],
-  summarize: [
-    "I can summarize that for you! The key points are:\n\n1. The main idea centers around the core concept\n2. Several supporting details reinforce this\n3. The conclusion ties everything together\n\nWould you like a more detailed breakdown?",
-    "Here's a concise summary:\n\n**Main Takeaway**: The essential point to remember\n**Supporting Details**: Key facts that back it up\n**Bottom Line**: What this means in practice",
-  ],
-  thanks: [
-    "You're welcome! Happy to help. If you have any more questions, feel free to ask!",
-    "My pleasure! Don't hesitate to reach out if you need anything else.",
-    "Anytime! That's what I'm here for. 😊",
-  ],
-  bye: [
-    "Goodbye! Feel free to come back anytime you need assistance.",
-    "Take care! I'll be here whenever you need me.",
-    "See you later! Wishing you a great day ahead.",
-  ],
+function extractTopics(input: string): string[] {
+  const words = input.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+  const stopWords = new Set(["this", "that", "with", "from", "have", "been", "were", "what", "when", "where", "which", "their", "there", "about", "would", "could", "should", "tell", "like", "just", "some", "thing", "want", "need", "know", "make", "work", "also", "very", "much", "more", "than", "then", "well", "over", "such", "your", "will"])
+  return [...new Set(words.filter(w => !stopWords.has(w) && /^[a-z]+$/.test(w)))]
 }
 
-const DEFAULT_RESPONSES = [
-  "That's an interesting question! Let me think about it carefully.\n\nBased on my analysis, here's what I'd suggest:\n\n1. Consider the core objective first\n2. Break it down into manageable steps\n3. Evaluate each option systematically\n4. Choose the approach that aligns best with your goals\n\nI hope this helps! Let me know if you'd like me to elaborate on any point.",
-  "Great question! Here's my perspective:\n\n**Key Insight**: The most effective approach usually combines multiple strategies rather than relying on a single method.\n\n**Recommendation**: Start with a small-scale test to validate your assumptions before committing to a full implementation. This saves time and resources while providing valuable feedback.\n\nWould you like me to dive deeper into any specific aspect?",
-  "I appreciate you asking! Let me share my thoughts:\n\nThere are several ways to approach this:\n\n- **Option A**: Quick to implement, good for short-term needs\n- **Option B**: More robust, better for long-term scalability\n- **Option C**: Balanced approach with moderate effort and results\n\n**My recommendation**: Option B provides the best long-term value despite the higher initial investment.\n\nWhat's your take on this?",
-  "Excellent question! Here's what you need to know:\n\n**The Short Answer**: Yes, but it depends on the specific context and requirements of your use case.\n\n**The Detailed View**: When evaluating this, consider:\n- Performance implications\n- Maintenance overhead\n- Scalability requirements\n- Team expertise\n\nEach factor plays a crucial role in determining the best path forward.",
-  "Let me break this down for you:\n\n1. **Core Concept**: At its heart, this is about optimizing for efficiency and effectiveness.\n\n2. **Practical Application**: In real-world scenarios, you'd typically start by defining clear metrics for success.\n\n3. **Common Pitfalls**: Watch out for over-engineering and analysis paralysis.\n\n4. **Best Practice**: Iterate quickly and gather feedback early.\n\nHope this helps clarify things!",
-  "Here's a thoughtful response to your question:\n\n**Context Matters**: The best answer always depends on your specific situation. What works for one scenario might not work for another.\n\n**Key Principles**:\n- Start with the end goal in mind\n- Gather all relevant information\n- Consider multiple perspectives\n- Make a decision and iterate\n\n**Final Thought**: Don't let perfect be the enemy of good. Progress over perfection!",
-  "I've been thinking about this, and here's what I've come up with:\n\n**Framework for Decision Making**:\n\n1. Define success criteria\n2. Evaluate options against criteria\n3. Consider trade-offs\n4. Make an informed choice\n5. Review and adjust\n\nThis structured approach helps avoid common decision-making biases and leads to better outcomes.",
-]
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
 
 function generateResponse(input: string, history: Message[]): string {
-  const lower = input.toLowerCase()
-  const context = history.slice(-4).map(m => m.content.toLowerCase()).join(" ")
+  const lower = input.toLowerCase().trim()
+  const topics = extractTopics(input)
+  const topic = topics.length > 0 ? topics[0] : "this"
+  const topicPhrase = topics.length > 1 ? `${topics[0]} and ${topics[1]}` : topic
+  const lastAssistantMsg = [...history].reverse().find(m => m.role === "assistant")?.content || ""
+  const lastUserMsg = [...history].reverse().find(m => m.role === "user")?.content || ""
+  const isFollowUp = history.length >= 2 && lastUserMsg && input.length < 30
+  const contextTopics = extractTopics(lastUserMsg)
+  const combinedTopics = [...new Set([...contextTopics.slice(0, 2), ...topics.slice(0, 2)])]
 
-  if (lower.includes("hello") || lower.includes("hi ") || lower.includes("hey")) {
-    if (context.includes("hello") || context.includes("hi")) {
-      return "Hello again! How can I continue to assist you?"
-    }
-    return RESPONSES.hello[Math.floor(Math.random() * RESPONSES.hello.length)]
+  if (lower.includes("hello") || lower.includes("hi ") || lower === "hi" || lower.includes("hey") || lower.includes("greetings")) {
+    if (history.length > 1) return "Hello again! How can I continue assisting you?"
+    const greetings = [
+      `Hello! How can I help you today? Feel free to ask about writing, coding, analysis, or anything else.`,
+      `Hi there! I'm your AI assistant. What can I do for you?`,
+      `Hey! Ready to help. What's on your mind?`,
+    ]
+    return greetings[Math.floor(Math.random() * greetings.length)]
   }
 
-  for (const [keyword, responses] of Object.entries(RESPONSES)) {
-    if (lower.includes(keyword)) {
-      return responses[Math.floor(Math.random() * responses.length)]
-    }
+  if (lower.includes("thank") || lower.includes("thanks")) {
+    const replies = [
+      "You're welcome! Happy to help. Let me know if you need anything else.",
+      "My pleasure! Feel free to ask more questions anytime.",
+      "Glad I could help! Anything else I can do for you?",
+    ]
+    return replies[Math.floor(Math.random() * replies.length)]
   }
 
-  return DEFAULT_RESPONSES[Math.floor(Math.random() * DEFAULT_RESPONSES.length)]
+  if (lower.includes("bye") || lower.includes("goodbye") || lower.includes("see you")) {
+    return "Goodbye! Feel free to come back whenever you need assistance."
+  }
+
+  if (lower.includes("who are you") || lower.includes("what are you") || lower.includes("tell me about yourself")) {
+    return "I'm an AI assistant built into this Office Toolkit. I can help with writing, coding, analysis, answering questions, brainstorming, and more. What would you like help with?"
+  }
+
+  if (lower.includes("what can you") || lower.includes("help me with") || lower.includes("capabilities")) {
+    return "I can help with:\n\n- **Writing & Editing**: Emails, reports, blog posts, stories\n- **Coding**: Generate, explain, and debug code in various languages\n- **Analysis**: Break down concepts, summarize information, provide insights\n- **Q&A**: Answer questions on a wide range of topics\n- **Brainstorming**: Generate ideas and creative solutions\n\nWhat would you like help with today?"
+  }
+
+  const qWords = ["what", "why", "how", "when", "where", "who", "which"]
+  const isQuestion = qWords.some(w => lower.startsWith(w) || lower.includes(` ${w} `)) || lower.endsWith("?")
+  const isHowTo = lower.includes("how to") || lower.includes("how do i") || lower.includes("how can i")
+
+  if (isFollowUp && combinedTopics.length > 0 && lastAssistantMsg) {
+    const followUps = [
+      `To expand on that: the key thing to understand about ${combinedTopics[0]} is how it fits into the bigger picture. Once you grasp the fundamentals, the rest becomes much clearer. Would you like me to go deeper into a specific aspect?`,
+      `Great follow-up! Building on what I mentioned earlier, ${combinedTopics[0]} has several important dimensions worth exploring. The most practical way to approach it is to start with the core principles and then layer on complexity as needed.`,
+      `That's a good question to dig deeper into ${combinedTopics.join(" and ")}. The most effective approach is to break it down into smaller, manageable parts and tackle each one systematically.`,
+      `Following up on that — ${combinedTopics.slice(0, 2).join(" and ")} are closely connected. Understanding their relationship is key to applying them effectively in real-world scenarios.`,
+    ]
+    return followUps[Math.floor(Math.random() * followUps.length)]
+  }
+
+  if (isHowTo) {
+    const action = topics.slice(0, 2).join(" ")
+    const howTos = [
+      `Here's how you can approach ${topicPhrase}:\n\n1. **Understand the requirements**: Clarify what you're trying to achieve\n2. **Plan your approach**: Break the task into steps\n3. **Gather necessary resources**: Tools, information, or materials needed\n4. **Execute step by step**: Follow your plan methodically\n5. **Review and refine**: Check the result and make improvements\n\nWould you like more specific guidance on any of these steps?`,
+      `To get started with ${topicPhrase}, I recommend:\n\n1. Start with the basics — don't try to do everything at once\n2. Find good examples or tutorials to follow\n3. Practice with small, achievable goals\n4. Iterate based on what you learn along the way\n\nThe key is consistent progress rather than perfection on the first try.`,
+      `Great question! Here's a practical approach to ${topicPhrase}:\n\n**Step 1**: Define what success looks like\n**Step 2**: Identify the resources and knowledge you need\n**Step 3**: Start with a minimal viable version\n**Step 4**: Get feedback and iterate\n**Step 5**: Scale up once the fundamentals are solid`,
+    ]
+    return howTos[Math.floor(Math.random() * howTos.length)]
+  }
+
+  if (isQuestion) {
+    const questions = [
+      `That's a great question about ${topicPhrase}. Let me break it down:\n\n**Core Answer**: ${capitalize(topic)} is fundamentally about understanding the principles and applying them effectively. The context matters a lot — what works in one scenario may need adjustment in another.\n\n**Key Points to Consider**:\n- What's your specific goal or use case?\n- What constraints or requirements do you have?\n- What resources are available to you?\n\nWould you like me to elaborate on any particular aspect?`,
+      `Excellent question! Here's my perspective on ${topicPhrase}:\n\n**The Short Answer**: It depends on your specific context and goals, but there are some general principles that apply broadly.\n\n**Key Factors**:\n1. Define your objectives clearly\n2. Understand the trade-offs involved\n3. Choose the approach that aligns with your priorities\n4. Be prepared to adapt as you learn more`,
+      `Good question! When it comes to ${topicPhrase}, here's what you should know:\n\n**Overview**: This is a nuanced topic with several important dimensions. The best way to understand it is to start with the fundamentals.\n\n**Practical Advice**:\n- Research best practices in your specific area\n- Start small and validate as you go\n- Learn from both successes and failures\n- Stay updated on new developments`,
+      `That's an interesting question about ${topicPhrase}. Let me share my thoughts:\n\n**Main Point**: The answer revolves around understanding your specific needs and constraints. There's rarely a one-size-fits-all solution.\n\n**Framework**:\n1. Identify the core challenge\n2. Evaluate available options\n3. Consider the trade-offs\n4. Make an informed decision\n5. Review and adjust as needed`,
+      `Great question! Regarding ${topicPhrase}:\n\nHere's what I'd recommend:\n\n1. **Research**: Understand the landscape and what others have done\n2. **Plan**: Map out your approach before diving in\n3. **Execute**: Take action while remaining flexible\n4. **Learn**: Extract lessons from each iteration\n5. **Improve**: Continuously refine your approach`,
+    ]
+    return questions[Math.floor(Math.random() * questions.length)]
+  }
+
+  if (lower.includes("write") || lower.includes("draft") || lower.includes("create") || lower.includes("compose")) {
+    const target = topicPhrase !== "this" ? ` about ${topicPhrase}` : ""
+    const writing = [
+      `I'd be happy to help you write${target}! To create something tailored for you, please tell me:\n\n- **Format**: Is this an email, blog post, report, or something else?\n- **Audience**: Who will be reading this?\n- **Tone**: Professional, casual, persuasive, or informative?\n- **Key points**: What message do you want to convey?\n\nWith these details, I can craft exactly what you need.`,
+      `Great, let's write something${target}! To make it perfect, share:\n\n- The type of content you need\n- Your target audience\n- The tone you're aiming for\n- Any specific points to include\n- Preferred length\n\nI'll create a well-structured piece for you.`,
+    ]
+    return writing[Math.floor(Math.random() * writing.length)]
+  }
+
+  if (lower.includes("code") || lower.includes("program") || lower.includes("function") || lower.includes("script") || lower.includes("algorithm")) {
+    const coding = [
+      `I can help with coding related to ${topicPhrase}! Please share:\n\n- **Language**: Which programming language?\n- **Goal**: What should the code accomplish?\n- **Constraints**: Any specific requirements or limitations?\n- **Context**: How does this fit into a larger project?\n\nI'll write clean, well-documented code for you.`,
+      `Let's write some code for ${topicPhrase}! To give you the best solution, I need:\n\n1. Programming language and environment\n2. What the code should do\n3. Any inputs/outputs expected\n4. Edge cases to handle\n\nShare the details and I'll generate efficient, readable code.`,
+    ]
+    return coding[Math.floor(Math.random() * coding.length)]
+  }
+
+  if (lower.includes("explain") || lower.includes("describe") || lower.includes("clarify") || lower.includes("what is") || lower.includes("define")) {
+    const explains = [
+      `Let me explain ${topicPhrase}:\n\n**What It Is**: At its core, this is about understanding how things work and why they matter.\n\n**How It Works**: The mechanism involves several interconnected components that together create the overall system or concept.\n\n**Why It Matters**: Understanding this helps you make better decisions and solve problems more effectively.\n\n**Practical Example**: Think of it like building with blocks — each piece has its purpose and contributes to the whole.`,
+      `Sure, I can explain ${topicPhrase}! Here's a simple breakdown:\n\n**Core Idea**: Everything starts with a fundamental principle that everything else builds upon.\n\n**How It Fits Together**: The different aspects are interconnected — changing one affects the others.\n\n**Real-World Application**: This isn't just theoretical — it has practical uses in everyday scenarios.\n\nDoes this help? Would you like me to go into more detail on any part?`,
+    ]
+    return explains[Math.floor(Math.random() * explains.length)]
+  }
+
+  if (lower.includes("compare") || lower.includes("difference") || lower.includes("vs ") || lower.includes("versus")) {
+    return `Let me compare ${topicPhrase}:\n\n**Similarities**: Both approaches share common goals and principles, but they differ in execution and trade-offs.\n\n**Key Differences**:\n- **Approach**: Each takes a different path to achieve results\n- **Complexity**: One may be simpler but less flexible\n- **Use Case**: Each excels in different scenarios\n- **Learning Curve**: One might be easier to start with\n\n**Recommendation**: Choose based on your specific needs, constraints, and long-term goals.`
+  }
+
+  if (lower.includes("advice") || lower.includes("suggest") || lower.includes("recommend") || lower.includes("should i") || lower.includes("opinion")) {
+    const advice = [
+      `Based on what you've shared about ${topicPhrase}, here's my advice:\n\n**Start Here**: Begin by clarifying what success looks like for your specific situation. Having clear criteria makes decision-making much easier.\n\n**Key Considerations**:\n- What's the most important outcome for you?\n- What resources (time, budget, skills) do you have?\n- What risks are you comfortable with?\n- What does your timeline look like?\n\n**My Take**: There's no single right answer, but being clear on your priorities will point you in the right direction.`,
+      `Great question! Here are my thoughts on ${topicPhrase}:\n\n**Recommendation**: I suggest starting with a small-scale test or pilot before committing fully. This lets you validate assumptions and adjust course early.\n\n**Why**: Most challenges become clearer once you start working through them. Analysis is valuable, but action reveals things you can't anticipate.\n\n**Next Step**: What's the smallest step you can take right now to move forward?`,
+    ]
+    return advice[Math.floor(Math.random() * advice.length)]
+  }
+
+  if (lower.includes("error") || lower.includes("bug") || lower.includes("issue") || lower.includes("problem") || lower.includes("not working") || lower.includes("fail")) {
+    const problem = topics.length > 1 ? topics.slice(0, 2).join(" ") : topic
+    return `Let me help you troubleshoot ${problem}:\n\n**Common Causes**:\n1. Check for simple things first — typos, missing imports, or configuration issues\n2. Verify your inputs and assumptions\n3. Look for version mismatches or compatibility issues\n\n**Debugging Approach**:\n1. Reproduce the issue consistently\n2. Isolate the specific component that's failing\n3. Check logs and error messages carefully\n4. Test one change at a time\n\nCan you share more details about what's happening? The error message and what you've tried so far would help me give more specific guidance.`
+  }
+
+  if (lower.includes("idea") || lower.includes("brainstorm") || lower.includes("suggestion") || lower.includes("creative")) {
+    return `Let's brainstorm ideas around ${topicPhrase}! Here are some directions to consider:\n\n**Direction 1**: Think about the core problem from a different angle — what would an outsider suggest?\n\n**Direction 2**: Combine existing approaches in a new way. Innovation often comes from unexpected combinations.\n\n**Direction 3**: Ask "what if" questions to challenge assumptions and open up new possibilities.\n\n**Direction 4**: Look at how similar challenges are solved in different fields — cross-pollination often yields fresh ideas.\n\nWant me to explore any of these directions further?`
+  }
+
+  const defaults = [
+    `That's an interesting point about ${topicPhrase}. Let me share my thoughts:\n\n1. Start by understanding the core principles involved\n2. Consider the specific context and requirements of your situation\n3. Evaluate different approaches and their trade-offs\n4. Choose the path that best aligns with your goals\n5. Iterate and refine based on results\n\nWould you like me to dive deeper into any specific aspect?`,
+    `Great topic! Here's my perspective on ${topicPhrase}:\n\n**Key Insight**: The most effective approach usually balances multiple factors rather than optimizing for just one. Context and trade-offs matter a lot.\n\n**Practical Steps**:\n1. Define what success looks like for you\n2. Identify the key variables at play\n3. Start with a well-informed approach\n4. Measure results and adjust course as needed\n\nWhat's your specific goal or challenge here?`,
+    `When it comes to ${topicPhrase}, here's what I'd suggest:\n\n**First Principles**: Break the topic down to its fundamentals. What are you really trying to achieve?\n\n**Action Plan**:\n- Research what's been done before\n- Identify the gaps or opportunities\n- Develop a hypothesis and test it\n- Learn from the results and refine\n\nThe most successful approaches come from a cycle of learning and adaptation.`,
+    `I appreciate you asking about ${topicPhrase}! Here's my take:\n\n**Core Idea**: The most important thing is to align your approach with your specific goals and constraints. Generic solutions often fall short.\n\n**What To Focus On**:\n1. Clarity on what you want to achieve\n2. Understanding the landscape and options\n3. Making informed choices based on evidence\n4. Staying flexible and adapting as you learn\n\nFeel free to share more context so I can give more specific guidance!`,
+    `Let me share my thoughts on ${topicPhrase}:\n\n**Overview**: This is a nuanced area where the right approach depends heavily on context. That said, some general principles apply broadly.\n\n**Framework**:\n1. **Assess**: Understand your starting point and goals\n2. **Explore**: Consider multiple approaches\n3. **Decide**: Make an informed choice\n4. **Execute**: Take action and monitor progress\n5. **Reflect**: Learn and adjust for next time\n\nWhat specific aspect would you like to explore further?`,
+    `Here's my response regarding ${topicPhrase}:\n\n**Main Takeaway**: Focus on what you can control and take consistent action. Progress is better than perfection.\n\n**Key Principles**:\n- Start where you are, use what you have\n- Learn by doing — theory only takes you so far\n- Seek feedback and iterate\n- Stay curious and keep learning\n\nWhat's the next step you're considering?`,
+  ]
+  return defaults[Math.floor(Math.random() * defaults.length)]
 }
 
 function formatTimestamp(ts: number): string {

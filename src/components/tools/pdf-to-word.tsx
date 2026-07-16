@@ -8,6 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import { PDFDocument } from "pdf-lib"
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx"
 import {
   Upload, Download, FileText, Check, X, FileDown, ArrowRight, FileType,
 } from "lucide-react"
@@ -34,6 +35,87 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+  const pdfjsLib = await import("pdfjs-dist")
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+  const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise
+  const pages: string[] = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const sorted = (content.items as any[])
+      .filter((item: any) => item.str.trim())
+      .sort((a: any, b: any) => {
+        const aY = a.transform[5]
+        const bY = b.transform[5]
+        const aX = a.transform[4]
+        const bX = b.transform[4]
+        if (Math.abs(aY - bY) < 5) return aX - bX
+        return bY - aY
+      })
+    pages.push(sorted.map((item: any) => item.str).join(" "))
+  }
+  return pages.join("\n\n")
+}
+
+function escapeRtf(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/{/g, "\\{").replace(/}/g, "\\}").replace(/\n/g, "\\par\n")
+}
+
+function createRtfContent(title: string, fileName: string, pageCount: number, text: string): string {
+  const escapedText = escapeRtf(text)
+  return `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Calibri;}}\n\\paperw12240\\paperh15840\\margl1440\\margr1440\\margt1440\\margb1440\n{\\info{\\title ${escapeRtf(title)}}}\n\\pard\\b\\fs28 ${escapeRtf(title)}\\b0\\par\n\\pard\\fs18 Source: ${escapeRtf(fileName)} | Pages: ${pageCount}\\par\n\\pard\\fs18 \\par\n\\pard\\fs22 ${escapedText}\\par\n}`
+}
+
+function createDocxBlob(title: string, fileName: string, pageCount: number, text: string): Promise<Blob> {
+  const textParagraphs = text ? text.split("\n").filter(Boolean).map(
+    (line) => new Paragraph({
+      spacing: { after: 120 },
+      children: [new TextRun({ text: line, size: 22 })],
+    })
+  ) : [new Paragraph({
+    children: [new TextRun({ text: "(No text could be extracted from this PDF)", italics: true, size: 22 })],
+  })]
+
+  const doc = new Document({
+    title,
+    description: `Converted from ${fileName}`,
+    styles: {
+      default: {
+        document: {
+          run: { font: "Calibri", size: 22 },
+        },
+      },
+    },
+    sections: [{
+      children: [
+        new Paragraph({
+          spacing: { after: 200 },
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: title, bold: true, size: 28, font: "Calibri" }),
+          ],
+        }),
+        new Paragraph({
+          spacing: { after: 300 },
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: `Source: ${fileName}  |  Pages: ${pageCount}`, size: 18, font: "Calibri", color: "666666" }),
+          ],
+        }),
+        new Paragraph({
+          spacing: { before: 200, after: 400 },
+          children: [
+            new TextRun({ text: "", size: 22 }),
+          ],
+        }),
+        ...textParagraphs,
+      ],
+    }],
+  })
+  return Packer.toBlob(doc)
 }
 
 export function PdfToWord() {
@@ -86,28 +168,81 @@ export function PdfToWord() {
     const interval = setInterval(() => {
       setProgress((p) => {
         const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
+        return next >= 90 ? 90 : next
       })
     }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + fileInfo.pages * 400 + Math.random() * 1500))
-    clearInterval(interval)
-    setProgress(100)
-    const ratio = outputFormat === "txt" ? 0.08 : outputFormat === "rtf" ? 0.9 : 0.75
-    const convertedSize = Math.round(fileInfo.file.size * (ratio + Math.random() * 0.15))
-    const mimeMap: Record<string, string> = {
-      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      doc: "application/msword",
-      rtf: "application/rtf",
-      txt: "text/plain",
+
+    try {
+      const formData = new FormData()
+      formData.append("file", fileInfo.file)
+      formData.append("format", outputFormat)
+
+      const response = await fetch("/api/convert/pdf-to-word", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`)
+      }
+
+      clearInterval(interval)
+      setProgress(100)
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize: blob.size, convertedUrl: url } : prev)
+      toast.success(`PDF converted to ${outputFormat.toUpperCase()} successfully!`)
+    } catch (err) {
+      clearInterval(interval)
+
+      // Fallback: client-side conversion if server unavailable
+      try {
+        const buffer = await fileInfo.file.arrayBuffer()
+        const extractedText = await extractPdfText(buffer)
+        setProgress(95)
+
+        let blob: Blob
+        const mimeMap: Record<string, string> = {
+          docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          doc: "application/msword",
+          rtf: "application/rtf",
+          txt: "text/plain",
+        }
+
+        switch (outputFormat) {
+          case "txt": {
+            const content = `Converted from: ${fileInfo.file.name}\nPages: ${fileInfo.pages}\n\n${extractedText || "(No text could be extracted)"}`
+            blob = new Blob([content], { type: mimeMap.txt })
+            break
+          }
+          case "rtf": {
+            const content = createRtfContent(fileInfo.title, fileInfo.file.name, fileInfo.pages, extractedText)
+            blob = new Blob([content], { type: mimeMap.rtf })
+            break
+          }
+          case "doc": {
+            const docxBlob = await createDocxBlob(fileInfo.title, fileInfo.file.name, fileInfo.pages, extractedText)
+            blob = new Blob([await docxBlob.arrayBuffer()], { type: mimeMap.doc })
+            break
+          }
+          default: {
+            blob = await createDocxBlob(fileInfo.title, fileInfo.file.name, fileInfo.pages, extractedText)
+            break
+          }
+        }
+
+        setProgress(100)
+        const url = URL.createObjectURL(blob)
+        setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize: blob.size, convertedUrl: url } : prev)
+        toast.success(`PDF converted to ${outputFormat.toUpperCase()} (offline mode)`)
+      } catch {
+        toast.error("Conversion failed. The PDF may be protected or corrupted.")
+        setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+      }
+    } finally {
+      setIsProcessing(false)
     }
-    const content = outputFormat === "txt"
-      ? `Converted from: ${fileInfo.file.name}\nPages: ${fileInfo.pages}\n\nThis is a text extraction of the PDF document. For full formatting, use DOCX format.`
-      : `PDF-to-Word conversion placeholder\nSource: ${fileInfo.file.name}\nPages: ${fileInfo.pages}\nFormat: ${outputFormat.toUpperCase()}`
-    const blob = new Blob([content], { type: mimeMap[outputFormat] || mimeMap.docx })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize, convertedUrl: url } : prev)
-    setIsProcessing(false)
-    toast.success(`PDF converted to ${outputFormat.toUpperCase()} successfully!`)
   }, [fileInfo, outputFormat])
 
   const download = React.useCallback(() => {
