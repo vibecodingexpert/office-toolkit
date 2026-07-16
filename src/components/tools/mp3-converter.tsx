@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileMusic, Check, X, Music,
 } from "lucide-react"
+import { convertAudio, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -18,22 +18,31 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const bitrateOptions = [
-  { label: "128 kbps", value: "128", desc: "Smallest size" },
-  { label: "192 kbps", value: "192", desc: "Standard quality" },
-  { label: "256 kbps", value: "256", desc: "High quality" },
-  { label: "320 kbps", value: "320", desc: "Best quality" },
+type Format = "mp3" | "wav" | "ogg" | "aac"
+
+const formatOptions: { value: Format; label: string; mime: string }[] = [
+  { value: "mp3", label: "MP3", mime: "audio/mpeg" },
+  { value: "wav", label: "WAV", mime: "audio/wav" },
+  { value: "ogg", label: "OGG", mime: "audio/ogg" },
+  { value: "aac", label: "AAC", mime: "audio/aac" },
 ]
 
 export function Mp3Converter() {
   const [file, setFile] = React.useState<File | null>(null)
   const [fileUrl, setFileUrl] = React.useState<string | null>(null)
-  const [bitrate, setBitrate] = React.useState("192")
+  const [format, setFormat] = React.useState<Format>("mp3")
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [convertedUrl, setConvertedUrl] = React.useState<string | null>(null)
   const [convertedSize, setConvertedSize] = React.useState(0)
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -49,33 +58,26 @@ export function Mp3Converter() {
   const convert = React.useCallback(async () => {
     if (!file) { toast.error("Please upload an audio file"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([await file.arrayBuffer()], { type: "audio/mpeg" })
-    const url = URL.createObjectURL(blob)
-    const ratio = Number(bitrate) / 320
-    setConvertedSize(Math.round(file.size * ratio * 0.9))
-    setConvertedUrl(url)
+    try {
+      const blob = await convertAudio(file, format)
+      const url = URL.createObjectURL(blob)
+      setConvertedSize(blob.size)
+      setConvertedUrl(url)
+      toast.success(`Converted to ${format.toUpperCase()} successfully!`)
+    } catch {
+      toast.error("Failed to convert audio")
+    }
     setIsProcessing(false)
-    toast.success("Converted to MP3 successfully!")
-  }, [file, bitrate])
+  }, [file, format])
 
   const download = React.useCallback(() => {
     if (!convertedUrl) return
     const a = document.createElement("a")
     a.href = convertedUrl
     const base = file?.name.replace(/\.[^/.]+$/, "") ?? "audio"
-    a.download = `${base}.mp3`
+    a.download = `${base}.${format}`
     a.click()
-  }, [convertedUrl, file])
+  }, [convertedUrl, file, format])
 
   const reset = React.useCallback(() => {
     if (fileUrl) URL.revokeObjectURL(fileUrl)
@@ -83,23 +85,41 @@ export function Mp3Converter() {
     setFile(null)
     setFileUrl(null)
     setConvertedUrl(null)
-    setProgress(0)
     setIsProcessing(false)
   }, [fileUrl, convertedUrl])
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
+            <FileMusic className="h-5 w-5 text-pink-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Audio Converter</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-pink-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
-                  <FileMusic className="h-5 w-5 text-pink-500" />
+          <FileMusic className="h-5 w-5 text-pink-500" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">MP3 Converter</h2>
-          <p className="text-sm text-muted-foreground">Convert audio files to MP3 format</p>
+          <h2 className="text-lg font-semibold">Audio Converter</h2>
+          <p className="text-sm text-muted-foreground">Convert audio files between formats</p>
         </div>
       </div>
 
-      <input ref={fileInputRef} type="file" accept="audio/wav,audio/ogg,audio/flac,audio/aac,audio/mp4,audio/x-m4a" onChange={handleFile} className="hidden" />
+      <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFile} className="hidden" />
 
       {!fileUrl ? (
         <button onClick={() => fileInputRef.current?.click()} className="flex w-full cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-border bg-background p-8 text-center transition-all hover:border-pink-500/50 hover:bg-pink-500/[0.02]">
@@ -107,8 +127,8 @@ export function Mp3Converter() {
             <Upload className="h-6 w-6 text-muted-foreground" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">Upload audio to convert to MP3</p>
-            <p className="mt-1 text-xs text-muted-foreground">Supports WAV, OGG, FLAC, AAC, M4A</p>
+            <p className="text-sm font-medium text-foreground">Upload audio to convert</p>
+            <p className="mt-1 text-xs text-muted-foreground">Supports MP3, WAV, OGG, AAC, FLAC, M4A</p>
           </div>
         </button>
       ) : (
@@ -129,21 +149,21 @@ export function Mp3Converter() {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Bitrate</label>
+            <label className="text-sm font-medium text-foreground">Output Format</label>
             <div className="grid grid-cols-4 gap-2">
-              {bitrateOptions.map((b) => (
+              {formatOptions.map((f) => (
                 <button
-                  key={b.value}
-                  onClick={() => setBitrate(b.value)}
+                  key={f.value}
+                  onClick={() => setFormat(f.value)}
                   className={cn(
                     "rounded-xl border p-3 text-left transition-all",
-                    bitrate === b.value
+                    format === f.value
                       ? "border-pink-500/50 bg-pink-500/10 ring-1 ring-pink-500/20"
                       : "border-border bg-card hover:border-pink-500/30"
                   )}
                 >
-                  <p className="text-sm font-medium text-foreground">{b.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{b.desc}</p>
+                  <p className="text-sm font-medium text-foreground">{f.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{f.mime}</p>
                 </button>
               ))}
             </div>
@@ -153,9 +173,15 @@ export function Mp3Converter() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-pink-500" />
-                Converting to MP3 ({bitrate} kbps)...
+                Converting to {format.toUpperCase()}...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-pink-500 to-pink-300"
+                />
+              </div>
             </div>
           )}
 
@@ -167,11 +193,11 @@ export function Mp3Converter() {
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
-          <FileMusic className="h-5 w-5 text-pink-500" />
+                  <FileMusic className="h-5 w-5 text-pink-500" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">MP3 Ready</p>
-                  <p className="text-xs text-muted-foreground">{bitrate} kbps · {formatSize(convertedSize)}</p>
+                  <p className="text-sm font-medium text-foreground">Conversion Complete</p>
+                  <p className="text-xs text-muted-foreground">{format.toUpperCase()} · {formatSize(convertedSize)}</p>
                 </div>
                 <Button size="sm" onClick={download} icon={<Download className="h-3.5 w-3.5" />}>
                   Download
@@ -182,7 +208,7 @@ export function Mp3Converter() {
 
           {!isProcessing && !convertedUrl && (
             <Button onClick={convert} size="lg" className="w-full" icon={<FileMusic className="h-4 w-4" />}>
-              Convert to MP3
+              Convert to {format.toUpperCase()}
             </Button>
           )}
 

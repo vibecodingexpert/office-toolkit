@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, Scissors, Video, Check, X, Play,
 } from "lucide-react"
+import { trimVideo, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -31,11 +31,18 @@ export function TrimVideo() {
   const [startTime, setStartTime] = React.useState(0)
   const [endTime, setEndTime] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [trimmedUrl, setTrimmedUrl] = React.useState<string | null>(null)
   const [trimmedSize, setTrimmedSize] = React.useState(0)
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const videoRef = React.useRef<HTMLVideoElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -63,24 +70,16 @@ export function TrimVideo() {
     if (!file || duration === 0) { toast.error("Please upload a video"); return }
     if (startTime >= endTime) { toast.error("Start time must be before end time"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const trimDuration = endTime - startTime
-    const ratio = trimDuration / duration
-    const blob = new Blob([await file.arrayBuffer()], { type: file.type })
-    const url = URL.createObjectURL(blob)
-    setTrimmedSize(Math.round(file.size * ratio))
-    setTrimmedUrl(url)
+    try {
+      const blob = await trimVideo(file, startTime, endTime - startTime)
+      const url = URL.createObjectURL(blob)
+      setTrimmedSize(blob.size)
+      setTrimmedUrl(url)
+      toast.success("Video trimmed successfully!")
+    } catch {
+      toast.error("Failed to trim video")
+    }
     setIsProcessing(false)
-    toast.success("Video trimmed successfully!")
   }, [file, duration, startTime, endTime])
 
   const download = React.useCallback(() => {
@@ -101,7 +100,6 @@ export function TrimVideo() {
     setStartTime(0)
     setEndTime(0)
     setDuration(0)
-    setProgress(0)
     setIsProcessing(false)
   }, [fileUrl, trimmedUrl])
 
@@ -110,6 +108,25 @@ export function TrimVideo() {
       videoRef.current.currentTime = time
     }
   }, [])
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+            <Scissors className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Trim Video</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
@@ -206,7 +223,13 @@ export function TrimVideo() {
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                 Trimming video...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
+                />
+              </div>
             </div>
           )}
 

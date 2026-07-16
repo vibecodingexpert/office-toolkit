@@ -15,6 +15,7 @@ import {
   Sparkles,
   Download,
   RefreshCw,
+  FileCode,
 } from "lucide-react"
 
 const LANGUAGES = [
@@ -35,38 +36,100 @@ const LANGUAGES = [
   "PHP",
   "Swift",
   "Kotlin",
+  "C#",
+  "Dart",
 ] as const
 
-const CODE_SAMPLES: Record<string, string> = {
-  JavaScript: `// Function to process and analyze data
+const CODE_TYPES = ["function", "class", "api-endpoint", "component", "algorithm", "utility"] as const
+
+const CODE_TEMPLATES: Record<string, (desc: string, type: string) => string> = {
+  JavaScript: (desc, type) => {
+    if (type === "class") {
+      return `class DataProcessor {
+  constructor(options = {}) {
+    this.options = { debug: false, ...options };
+    this.cache = new Map();
+    this.queue = [];
+  }
+
+  async process(input) {
+    try {
+      const normalized = this._normalize(input);
+      const result = await this._transform(normalized);
+      this.cache.set(input, result);
+      return result;
+    } catch (error) {
+      console.error('Processing failed:', error);
+      throw new Error(\`Failed to process: \${error.message}\`);
+    }
+  }
+
+  _normalize(data) {
+    if (typeof data === 'string') return data.trim().toLowerCase();
+    if (Array.isArray(data)) return data.filter(Boolean).map(i => i.toString());
+    return data;
+  }
+
+  async _transform(data) {
+    // Simulate async transformation
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ original: data, processed: true, timestamp: Date.now() });
+      }, 100);
+    });
+  }
+
+  getStats() {
+    return {
+      cacheSize: this.cache.size,
+      queueLength: this.queue.length,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+}
+
+export { DataProcessor };`
+    }
+    return `/**\n * Processes and transforms input data with validation\n * @param {*} input - The data to process\n * @param {Object} options - Configuration options\n * @returns {Promise<Object>} Processed result\n */\nasync function processData(input, options = {}) {\n  const { validate = true, transform = 'json', format = true } = options;\n\n  if (validate && !input) {\n    throw new Error('Input is required');\n  }\n\n  const normalized = typeof input === 'string' ? JSON.parse(input) : input;\n  const transformed = await performTransform(normalized, transform);\n  const result = format ? JSON.stringify(transformed, null, 2) : transformed;\n\n  return {\n    success: true,\n    data: result,\n    metadata: {\n      timestamp: new Date().toISOString(),\n      inputType: typeof input,\n      optionsUsed: options,\n    },\n  };\n}\n\nasync function performTransform(data, type) {\n  // Transform logic here\n  return { ...data, transformed: true, type };\n}\n\n// Usage example\nconst result = await processData({ name: 'example', value: 42 });\nconsole.log(result);`
+  },
+  Python: (desc, type) => {
+    if (type === "class") {
+      return `from typing import Any, Optional, Dict, List\nfrom datetime import datetime\nimport json\n\nclass DataProcessor:\n    """Process and transform data with validation and caching."""\n\n    def __init__(self, debug: bool = False):\n        self.debug = debug\n        self.cache: Dict[str, Any] = {}\n        self.queue: List[Dict] = []\n\n    async def process(self, input_data: Any, **options) -> Dict[str, Any]:\n        try:\n            normalized = self._normalize(input_data)\n            result = await self._transform(normalized, options)\n            self.cache[str(input_data)] = result\n            return {"success": True, "data": result, "cached": False}\n        except Exception as e:\n            if self.debug:\n                print(f"Processing error: {e}")\n            raise\n\n    def _normalize(self, data: Any) -> Any:\n        if isinstance(data, str):\n            return data.strip().lower()\n        if isinstance(data, (list, tuple)):\n            return [str(i) for i in data if i]\n        return data\n\n    async def _transform(self, data: Any, options: dict) -> dict:\n        return {\n            "original": data,\n            "processed": True,\n            "timestamp": datetime.now().isoformat(),\n            "options": options,\n        }\n\n    def get_stats(self) -> dict:\n        return {\n            "cache_size": len(self.cache),\n            "queue_length": len(self.queue),\n            "last_updated": datetime.now().isoformat(),\n        }`
+    }
+    return `import asyncio\nfrom typing import Any, Optional\n\nasync def process_data(\n    input_data: Any,\n    validate: bool = True,\n    transform_type: str = "json"\n) -> dict:\n    """Process and transform input data.\n\n    Args:\n        input_data: The data to process\n        validate: Whether to validate input\n        transform_type: Type of transformation\n\n    Returns:\n        Processed result with metadata\n    """\n    if validate and not input_data:\n        raise ValueError("Input is required")\n\n    normalized = input_data if isinstance(input_data, (dict, list)) else json.loads(input_data)\n    transformed = await perform_transform(normalized, transform_type)\n\n    return {\n        "success": True,\n        "data": transformed,\n        "metadata": {\n            "timestamp": datetime.now().isoformat(),\n            "input_type": type(input_data).__name__,\n        },\n    }\n\nasync def perform_transform(data: Any, transform_type: str) -> Any:\n    """Apply transformation to data."""\n    await asyncio.sleep(0.1)  # Simulate async work\n    return {**data, "transformed": True, "type": transform_type}`
+  },
+  TypeScript: (desc, type) => {
+    return `interface ProcessResult<T> {\n  success: boolean;\n  data: T;\n  metadata: {\n    timestamp: string;\n    duration: number;\n    inputType: string;\n  };\n}\n\ninterface ProcessOptions {\n  validate?: boolean;\n  transform?: 'json' | 'xml' | 'csv';\n  format?: boolean;\n  timeout?: number;\n}\n\nasync function processData<T>(\n  input: unknown,\n  options: ProcessOptions = {}\n): Promise<ProcessResult<T>> {\n  const {\n    validate = true,\n    transform = 'json',\n    format = true,\n    timeout = 5000,\n  } = options;\n\n  const startTime = performance.now();\n\n  if (validate && !input) {\n    throw new Error('Input is required');\n  }\n\n  const normalized = typeof input === 'string'\n    ? JSON.parse(input)\n    : input as T;\n\n  const transformed = await performTransform(normalized, transform);\n  const result = format\n    ? JSON.stringify(transformed, null, 2)\n    : transformed;\n\n  return {\n    success: true,\n    data: result as unknown as T,\n    metadata: {\n      timestamp: new Date().toISOString(),\n      duration: performance.now() - startTime,\n      inputType: typeof input,\n    },\n  };\n}\n\nasync function performTransform<T>(data: T, type: string): Promise<T> {\n  return { ...data, transformed: true as const, type } as unknown as T;\n}\n\nexport { processData, type ProcessResult, type ProcessOptions };`
+  },
+  React: (desc, type) => {
+    return `import React, { useState, useEffect, useCallback, useMemo } from 'react';\n\ninterface DataItem {\n  id: number;\n  name: string;\n  value: number;\n  category: string;\n}\n\ninterface DashboardProps {\n  title: string;\n  initialData?: DataItem[];\n  onItemSelect?: (item: DataItem) => void;\n}\n\nconst DataDashboard: React.FC<DashboardProps> = ({\n  title,\n  initialData = [],\n  onItemSelect,\n}) => {\n  const [data, setData] = useState<DataItem[]>(initialData);\n  const [sortKey, setSortKey] = useState<keyof DataItem>('id');\n  const [sortAsc, setSortAsc] = useState(true);\n  const [filter, setFilter] = useState('');\n  const [isLoading, setIsLoading] = useState(false);\n  const [error, setError] = useState<string | null>(null);\n\n  const fetchData = useCallback(async () => {\n    setIsLoading(true);\n    setError(null);\n    try {\n      const response = await fetch('/api/data');\n      if (!response.ok) throw new Error(\`HTTP \${response.status}\`);\n      const result = await response.json();\n      setData(result);\n    } catch (err) {\n      setError(err instanceof Error ? err.message : 'Failed to fetch');\n    } finally {\n      setIsLoading(false);\n    }\n  }, []);\n\n  useEffect(() => {\n    if (initialData.length === 0) fetchData();\n  }, [fetchData, initialData.length]);\n\n  const sortedAndFiltered = useMemo(() =>\n    data\n      .filter(item =>\n        item.name.toLowerCase().includes(filter.toLowerCase())\n      )\n      .sort((a, b) => {\n        const valA = a[sortKey];\n        const valB = b[sortKey];\n        if (typeof valA === 'string' && typeof valB === 'string') {\n          return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);\n        }\n        return sortAsc ? Number(valA) - Number(valB) : Number(valB) - Number(valA);\n      }),\n    [data, filter, sortKey, sortAsc]\n  );\n\n  const handleSort = (key: keyof DataItem) => {\n    if (key === sortKey) setSortAsc(!sortAsc);\n    else { setSortKey(key); setSortAsc(true); }\n  };\n\n  if (error) return <div className="error">Error: {error}</div>;\n\n  return (\n    <div className="dashboard p-6">\n      <header className="flex items-center justify-between mb-6">\n        <h1 className="text-2xl font-bold">{title}</h1>\n        <input\n          type="text"\n          placeholder="Filter by name..."\n          value={filter}\n          onChange={e => setFilter(e.target.value)}\n          className="search-input px-4 py-2 rounded-lg border"\n        />\n      </header>\n\n      {isLoading ? (\n        <div className="flex justify-center py-12">\n          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />\n        </div>\n      ) : (\n        <table className="w-full border-collapse">\n          <thead>\n            <tr className="bg-muted/50">\n              {(['id', 'name', 'value', 'category'] as const).map(key => (\n                <th\n                  key={key}\n                  onClick={() => handleSort(key)}\n                  className="cursor-pointer px-4 py-3 text-left text-sm font-medium"\n                >\n                  {key.charAt(0).toUpperCase() + key.slice(1)}\n                  {sortKey === key && (sortAsc ? ' ▲' : ' ▼')}\n                </th>\n              ))}\n            </tr>\n          </thead>\n          <tbody>\n            {sortedAndFiltered.map(item => (\n              <tr\n                key={item.id}\n                onClick={() => onItemSelect?.(item)}\n                className="border-t hover:bg-muted/30 cursor-pointer transition-colors"\n              >\n                <td className="px-4 py-3">{item.id}</td>\n                <td className="px-4 py-3 font-medium">{item.name}</td>\n                <td className="px-4 py-3">{item.value}</td>\n                <td className="px-4 py-3">\n                  <span className="px-2 py-1 rounded-full bg-primary/10 text-xs">{item.category}</span>\n                </td>\n              </tr>\n            ))}\n          </tbody>\n        </table>\n      )}\n\n      <footer className="mt-4 flex items-center justify-between text-sm text-muted-foreground">\n        <span>Showing {sortedAndFiltered.length} of {data.length} items</span>\n        <button onClick={fetchData} className="px-4 py-2 rounded-lg border hover:bg-accent">\n          Refresh\n        </button>\n      </footer>\n    </div>\n  );\n};\n\nexport default DataDashboard;`
+  },
+  Node: (desc, type) => {
+    return `const express = require('express');\nconst { rateLimit } = require('express-rate-limit');\nconst cors = require('cors');\n\nconst app = express();\nconst PORT = process.env.PORT || 3000;\n\n// Middleware\napp.use(cors());\napp.use(express.json({ limit: '10mb' }));\napp.use(express.urlencoded({ extended: true }));\n\n// Rate limiting\nconst limiter = rateLimit({\n  windowMs: 15 * 60 * 1000,\n  max: 100,\n  message: { error: 'Too many requests', retryAfter: '15 minutes' },\n});\napp.use('/api/', limiter);\n\n// Routes\napp.get('/api/health', (req, res) => {\n  res.json({ status: 'ok', timestamp: new Date().toISOString() });\n});\n\napp.post('/api/data', async (req, res) => {\n  try {\n    const { input, options } = req.body;\n    const result = await processData(input, options);\n    res.json(result);\n  } catch (error) {\n    res.status(500).json({ error: error.message });\n  }\n});\n\nasync function processData(input, options) {\n  // Data processing logic\n  return { processed: true, input, options };\n}\n\napp.listen(PORT, () => {\n  console.log(\`Server running on http://localhost:\${PORT}\`);\n});\n\nmodule.exports = app;`
+  },
+  SQL: (desc, type) => {
+    return `-- ${desc}\n\nCREATE TABLE IF NOT EXISTS users (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    email VARCHAR(255) UNIQUE NOT NULL,\n    password_hash VARCHAR(255) NOT NULL,\n    first_name VARCHAR(100) NOT NULL,\n    last_name VARCHAR(100) NOT NULL,\n    phone VARCHAR(20),\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n    INDEX idx_email (email),\n    INDEX idx_name (last_name, first_name)\n);\n\nCREATE TABLE IF NOT EXISTS products (\n    id INT PRIMARY KEY AUTO_INCREMENT,\n    name VARCHAR(255) NOT NULL,\n    description TEXT,\n    price DECIMAL(10, 2) NOT NULL,\n    stock_quantity INT NOT NULL DEFAULT 0,\n    category_id INT,\n    is_active BOOLEAN DEFAULT TRUE,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    FOREIGN KEY (category_id) REFERENCES categories(id),\n    INDEX idx_price (price),\n    FULLTEXT INDEX idx_search (name, description)\n);\n\n-- Sample query\nSELECT\n    p.name,\n    SUM(oi.quantity * oi.unit_price) AS total_revenue,\n    COUNT(DISTINCT o.user_id) AS unique_customers\nFROM products p\nJOIN order_items oi ON p.id = oi.product_id\nJOIN orders o ON oi.order_id = o.id\nWHERE o.status = 'delivered'\n  AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)\nGROUP BY p.id, p.name\nORDER BY total_revenue DESC\nLIMIT 10;`
+  },
+}
+
+const DEFAULT_CODE = `// Function to process and analyze data
 function processData(data, options = {}) {
   const { sortBy = 'id', ascending = true, filter = null } = options;
 
-  // Validate input
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error('Invalid data: expected non-empty array');
   }
 
-  // Apply filter if provided
-  const filtered = filter
-    ? data.filter(item => filter(item))
-    : data;
-
-  // Sort the data
+  const filtered = filter ? data.filter(item => filter(item)) : data;
   const sorted = [...filtered].sort((a, b) => {
     const valA = a[sortBy];
     const valB = b[sortBy];
-
     if (typeof valA === 'string') {
-      return ascending
-        ? valA.localeCompare(valB)
-        : valB.localeCompare(valA);
+      return ascending ? valA.localeCompare(valB) : valB.localeCompare(valA);
     }
-
     return ascending ? valA - valB : valB - valA;
   });
 
-  // Enrich with metadata
   return {
     data: sorted,
     metadata: {
@@ -92,520 +155,11 @@ const result = processData(sampleData, {
   filter: (item) => item.score >= 80,
 });
 
-console.log('Processed results:', result);`,
-  TypeScript: `interface ProcessOptions<T> {
-  sortBy?: keyof T;
-  ascending?: boolean;
-  filter?: (item: T) => boolean;
-  limit?: number;
-}
-
-interface ProcessResult<T> {
-  data: T[];
-  metadata: {
-    total: number;
-    filtered: number;
-    sortBy: string;
-    ascending: boolean;
-    timestamp: string;
-  };
-}
-
-function processData<T extends Record<string, unknown>>(
-  data: T[],
-  options: ProcessOptions<T> = {}
-): ProcessResult<T> {
-  const {
-    sortBy = 'id' as keyof T,
-    ascending = true,
-    filter = null,
-    limit,
-  } = options;
-
-  if (!Array.isArray(data) || data.length === 0) {
-    throw new Error('Invalid data: expected non-empty array');
-  }
-
-  const filtered = filter ? data.filter(filter) : data;
-
-  const sorted = [...filtered].sort((a, b) => {
-    const valA = a[sortBy];
-    const valB = b[sortBy];
-
-    if (typeof valA === 'string' && typeof valB === 'string') {
-      return ascending
-        ? valA.localeCompare(valB)
-        : valB.localeCompare(valA);
-    }
-
-    return ascending
-      ? Number(valA) - Number(valB)
-      : Number(valB) - Number(valA);
-  });
-
-  const limited = limit ? sorted.slice(0, limit) : sorted;
-
-  return {
-    data: limited,
-    metadata: {
-      total: data.length,
-      filtered: limited.length,
-      sortBy: String(sortBy),
-      ascending,
-      timestamp: new Date().toISOString(),
-    },
-  };
-}
-
-export { processData, type ProcessOptions, type ProcessResult };`,
-  Python: `from typing import Any, Optional, Callable
-from datetime import datetime
-
-def process_data(
-    data: list[dict[str, Any]],
-    sort_by: str = "id",
-    ascending: bool = True,
-    filter_func: Optional[Callable] = None,
-    limit: Optional[int] = None
-) -> dict:
-    """
-    Process and analyze a list of dictionaries.
-
-    Args:
-        data: List of dictionaries to process
-        sort_by: Key to sort by
-        ascending: Sort order
-        filter_func: Optional filter function
-        limit: Maximum number of items to return
-
-    Returns:
-        Dictionary with processed data and metadata
-    """
-    if not data or not isinstance(data, list):
-        raise ValueError("Data must be a non-empty list")
-
-    # Apply filter
-    filtered = list(filter(filter_func, data)) if filter_func else data
-
-    # Sort the data
-    sorted_data = sorted(
-        filtered,
-        key=lambda x: x.get(sort_by, 0),
-        reverse=not ascending
-    )
-
-    # Apply limit
-    if limit:
-        sorted_data = sorted_data[:limit]
-
-    return {
-        "data": sorted_data,
-        "metadata": {
-            "total": len(data),
-            "filtered": len(sorted_data),
-            "sort_by": sort_by,
-            "ascending": ascending,
-            "timestamp": datetime.now().isoformat(),
-        },
-    }
-
-
-# Example usage
-if __name__ == "__main__":
-    sample_data = [
-        {"id": 3, "name": "Charlie", "score": 85},
-        {"id": 1, "name": "Alice", "score": 92},
-        {"id": 2, "name": "Bob", "score": 78},
-    ]
-
-    result = process_data(
-        sample_data,
-        sort_by="score",
-        ascending=False,
-        filter_func=lambda x: x.get("score", 0) >= 80,
-    )
-
-    print("Processed results:", result)`,
-  HTML: `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data Dashboard</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <header class="dashboard-header">
-        <h1>Data Dashboard</h1>
-        <nav class="dashboard-nav">
-            <a href="#overview">Overview</a>
-            <a href="#analytics">Analytics</a>
-            <a href="#reports">Reports</a>
-        </nav>
-    </header>
-
-    <main class="dashboard-main">
-        <section id="overview" class="card-grid">
-            <article class="card">
-                <div class="card-header">
-                    <h2>Total Users</h2>
-                    <span class="badge badge-primary">+12%</span>
-                </div>
-                <div class="card-body">
-                    <p class="stat-value">24,563</p>
-                    <p class="stat-label">Active users this month</p>
-                </div>
-            </article>
-
-            <article class="card">
-                <div class="card-header">
-                    <h2>Revenue</h2>
-                    <span class="badge badge-success">+8%</span>
-                </div>
-                <div class="card-body">
-                    <p class="stat-value">$48,290</p>
-                    <p class="stat-label">Monthly recurring revenue</p>
-                </div>
-            </article>
-
-            <article class="card">
-                <div class="card-header">
-                    <h2>Conversion Rate</h2>
-                    <span class="badge badge-warning">+3%</span>
-                </div>
-                <div class="card-body">
-                    <p class="stat-value">3.24%</p>
-                    <p class="stat-label">Overall conversion rate</p>
-                </div>
-            </article>
-        </section>
-
-        <section id="analytics" class="chart-container">
-            <h2>Monthly Trends</h2>
-            <div class="chart-placeholder">
-                <canvas id="trendsChart"></canvas>
-            </div>
-        </section>
-    </main>
-
-    <script src="dashboard.js"></script>
-</body>
-</html>`,
-  CSS: `/* Modern CSS Reset and Base Styles */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-:root {
-  --primary: #6366f1;
-  --primary-dark: #4f46e5;
-  --secondary: #ec4899;
-  --background: #0f172a;
-  --surface: #1e293b;
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --border: #334155;
-  --success: #22c55e;
-  --warning: #eab308;
-  --error: #ef4444;
-  --radius: 12px;
-  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
-}
-
-body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: var(--background);
-  color: var(--text);
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Card Component */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  box-shadow: var(--shadow);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 12px -1px rgb(0 0 0 / 0.4);
-}
-
-/* Button Styles */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: var(--primary);
-  color: white;
-}
-
-.btn-primary:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1px);
-}
-
-/* Grid Layout */
-.grid {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.grid-cols-3 {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-@media (max-width: 768px) {
-  .grid-cols-3 {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Animation */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.fade-in {
-  animation: fadeIn 0.3s ease-out;
-}`,
-  SQL: `-- Database Schema for E-Commerce Platform
-
--- Create database
-CREATE DATABASE IF NOT EXISTS ecommerce;
-USE ecommerce;
-
--- Users table
-CREATE TABLE users (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    phone VARCHAR(20),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_email (email),
-    INDEX idx_name (last_name, first_name)
-);
-
--- Products table
-CREATE TABLE products (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    price DECIMAL(10, 2) NOT NULL,
-    stock_quantity INT NOT NULL DEFAULT 0,
-    category_id INT,
-    image_url VARCHAR(500),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (category_id) REFERENCES categories(id),
-    INDEX idx_category (category_id),
-    INDEX idx_price (price),
-    FULLTEXT INDEX idx_search (name, description)
-);
-
--- Orders table
-CREATE TABLE orders (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    status ENUM('pending', 'confirmed', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
-    total_amount DECIMAL(12, 2) NOT NULL,
-    shipping_address TEXT NOT NULL,
-    payment_method VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    INDEX idx_user (user_id),
-    INDEX idx_status (status),
-    INDEX idx_created (created_at)
-);
-
--- Order Items table
-CREATE TABLE order_items (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    order_id INT NOT NULL,
-    product_id INT NOT NULL,
-    quantity INT NOT NULL,
-    unit_price DECIMAL(10, 2) NOT NULL,
-    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id),
-    INDEX idx_order (order_id)
-);
-
--- Query: Get top products by revenue
-SELECT
-    p.id,
-    p.name,
-    SUM(oi.quantity * oi.unit_price) AS total_revenue,
-    COUNT(DISTINCT o.user_id) AS unique_customers
-FROM products p
-JOIN order_items oi ON p.id = oi.product_id
-JOIN orders o ON oi.order_id = o.id
-WHERE o.status IN ('delivered', 'confirmed')
-  AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-GROUP BY p.id, p.name
-ORDER BY total_revenue DESC
-LIMIT 10;`,
-  React: `import React, { useState, useEffect, useCallback } from 'react';
-import './DataDashboard.css';
-
-interface DataItem {
-  id: number;
-  name: string;
-  value: number;
-  category: string;
-}
-
-interface DashboardProps {
-  title: string;
-  initialData?: DataItem[];
-}
-
-const DataDashboard: React.FC<DashboardProps> = ({
-  title,
-  initialData = [],
-}) => {
-  const [data, setData] = useState<DataItem[]>(initialData);
-  const [sortKey, setSortKey] = useState<keyof DataItem>('id');
-  const [sortAsc, setSortAsc] = useState(true);
-  const [filter, setFilter] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/data');
-      const result = await response.json();
-      setData(result);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (initialData.length === 0) {
-      fetchData();
-    }
-  }, [fetchData, initialData.length]);
-
-  const sortedAndFiltered = data
-    .filter((item) =>
-      item.name.toLowerCase().includes(filter.toLowerCase())
-    )
-    .sort((a, b) => {
-      const valA = a[sortKey];
-      const valB = b[sortKey];
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        return sortAsc
-          ? valA.localeCompare(valB)
-          : valB.localeCompare(valA);
-      }
-      return sortAsc
-        ? Number(valA) - Number(valB)
-        : Number(valB) - Number(valA);
-    });
-
-  const handleSort = (key: keyof DataItem) => {
-    if (key === sortKey) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortKey(key);
-      setSortAsc(true);
-    }
-  };
-
-  return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>{title}</h1>
-        <input
-          type="text"
-          placeholder="Filter by name..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="search-input"
-        />
-      </header>
-
-      {isLoading ? (
-        <div className="loading-spinner">Loading...</div>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th onClick={() => handleSort('id')}>
-                ID {sortKey === 'id' && (sortAsc ? '▲' : '▼')}
-              </th>
-              <th onClick={() => handleSort('name')}>
-                Name {sortKey === 'name' && (sortAsc ? '▲' : '▼')}
-              </th>
-              <th onClick={() => handleSort('value')}>
-                Value {sortKey === 'value' && (sortAsc ? '▲' : '▼')}
-              </th>
-              <th onClick={() => handleSort('category')}>
-                Category {sortKey === 'category' && (sortAsc ? '▲' : '▼')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedAndFiltered.map((item) => (
-              <tr key={item.id}>
-                <td>{item.id}</td>
-                <td>{item.name}</td>
-                <td>{item.value}</td>
-                <td>
-                  <span className="category-badge">{item.category}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <div className="dashboard-footer">
-        <span>Showing {sortedAndFiltered.length} of {data.length} items</span>
-        <button onClick={fetchData} className="refresh-btn">
-          Refresh
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default DataDashboard;`,
-}
+console.log('Processed results:', result);`
 
 export function CodeGenerator() {
   const [language, setLanguage] = React.useState<(typeof LANGUAGES)[number]>("JavaScript")
+  const [codeType, setCodeType] = React.useState<(typeof CODE_TYPES)[number]>("function")
   const [description, setDescription] = React.useState("")
   const [loading, setLoading] = React.useState(false)
   const [progress, setProgress] = React.useState(0)
@@ -613,7 +167,8 @@ export function CodeGenerator() {
   const [copied, setCopied] = React.useState(false)
 
   const handleGenerate = React.useCallback(async () => {
-    if (!description.trim()) {
+    const desc = description.trim() || `Generate a ${codeType} in ${language}`
+    if (!desc.trim()) {
       toast.error("Please describe what the code should do")
       return
     }
@@ -629,16 +184,17 @@ export function CodeGenerator() {
       })
     }, 300)
 
-    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000))
+    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500))
 
     clearInterval(interval)
     setProgress(100)
 
-    const sample = CODE_SAMPLES[language] || CODE_SAMPLES.JavaScript
-    setOutput(sample)
+    const template = CODE_TEMPLATES[language] || CODE_TEMPLATES[language.replace(/\.\w+$/, "")]
+    const code = template ? template(desc, codeType) : DEFAULT_CODE
+    setOutput(code)
     setLoading(false)
-    toast.success("Code generated")
-  }, [language, description])
+    toast.success(`${language} ${codeType} generated`)
+  }, [language, codeType, description])
 
   const highlightSyntax = (code: string): React.ReactNode => {
     const lines = code.split("\n")
@@ -649,11 +205,9 @@ export function CodeGenerator() {
         .replace(/\b(\d+\.?\d*)\b/g, '<span class="text-amber-400">$1</span>')
         .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="text-emerald-400">$1</span>')
         .replace(/\b([A-Z][a-zA-Z]+)\b/g, (match) => {
-          const types = ["ProcessOptions", "ProcessResult", "DashboardProps", "DataItem", "HTMLInputElement", "React", "FC", "Dispatch", "SetStateAction"]
+          const types = ["ProcessOptions", "ProcessResult", "DashboardProps", "DataItem", "FC", "Promise"]
           return types.includes(match) ? `<span class="text-cyan-400">${match}</span>` : match
         })
-        .replace(/([{}().,;:[\]])\s*/g, '$1 ')
-
       return (
         <div key={i} className="flex">
           <span className="mr-4 inline-block w-8 text-right text-muted-foreground/40 select-none text-xs">
@@ -680,12 +234,10 @@ export function CodeGenerator() {
   const handleDownload = React.useCallback(() => {
     if (!output) return
     const extMap: Record<string, string> = {
-      JavaScript: "js",
-      TypeScript: "ts",
-      Python: "py",
-      HTML: "html",
-      CSS: "css",
-      SQL: "sql",
+      JavaScript: "js", TypeScript: "ts", Python: "py", HTML: "html", CSS: "css", SQL: "sql",
+      React: "tsx", "Node.js": "js", Java: "java", Go: "go", Rust: "rs", "C++": "cpp",
+      Ruby: "rb", PHP: "php", Swift: "swift", Kotlin: "kt", "C#": "cs", Dart: "dart",
+      "Next.js": "tsx",
     }
     const ext = extMap[language] || "txt"
     const blob = new Blob([output], { type: "text/plain" })
@@ -710,7 +262,7 @@ export function CodeGenerator() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Code Generator</h1>
-          <p className="text-sm text-muted-foreground">Generate code with AI</p>
+          <p className="text-sm text-muted-foreground">Generate code in 19 languages</p>
         </div>
       </motion.div>
 
@@ -730,6 +282,26 @@ export function CodeGenerator() {
                 )}
               >
                 {lang}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Code Type</label>
+          <div className="flex gap-2">
+            {CODE_TYPES.map((t) => (
+              <button
+                key={t}
+                onClick={() => setCodeType(t)}
+                className={cn(
+                  "rounded-xl border px-4 py-2 text-xs font-medium transition-all capitalize",
+                  codeType === t
+                    ? "border-primary/50 bg-primary/5 text-primary shadow-sm"
+                    : "border-border text-foreground hover:border-primary/30"
+                )}
+              >
+                {t.replace("-", " ")}
               </button>
             ))}
           </div>
@@ -769,7 +341,10 @@ export function CodeGenerator() {
             className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
           >
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <span className="text-sm font-medium text-foreground capitalize">{language} Code</span>
+              <div className="flex items-center gap-2">
+                <FileCode className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-foreground capitalize">{language} — {codeType}</span>
+              </div>
               <div className="flex items-center gap-2">
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -777,11 +352,7 @@ export function CodeGenerator() {
                   onClick={handleCopy}
                   className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
-                  {copied ? (
-                    <><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>
-                  ) : (
-                    <><Copy className="h-3.5 w-3.5" /> Copy</>
-                  )}
+                  {copied ? (<><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>) : (<><Copy className="h-3.5 w-3.5" /> Copy</>)}
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -789,8 +360,7 @@ export function CodeGenerator() {
                   onClick={handleDownload}
                   className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
-                  <Download className="h-3.5 w-3.5" />
-                  Download
+                  <Download className="h-3.5 w-3.5" /> Download
                 </motion.button>
               </div>
             </div>

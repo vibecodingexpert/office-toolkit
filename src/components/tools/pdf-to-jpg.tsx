@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
+import { PDFDocument } from "pdf-lib"
+import JSZip from "jszip"
 import {
-  Upload, Download, FileText, Check, X, FileDown, Image, Archive,
+  Upload, Download, FileText, Check, X, Image, Archive,
 } from "lucide-react"
 
 interface FileInfo {
@@ -16,6 +18,7 @@ interface FileInfo {
   file: File
   pages: number
   status: "idle" | "processing" | "done" | "error"
+  pdfUrl: string
 }
 
 interface GeneratedImage {
@@ -30,10 +33,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
-function simulatePages(size: number): number {
-  return Math.max(2, Math.floor(size / 50000))
 }
 
 const qualityOptions = [
@@ -53,85 +52,140 @@ export function PdfToJpg() {
   const [images, setImages] = React.useState<GeneratedImage[]>([])
   const [zipUrl, setZipUrl] = React.useState<string | null>(null)
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    setFileInfo({
-      id: crypto.randomUUID(),
-      file: f,
-      pages: simulatePages(f.size),
-      status: "idle",
-    })
-    setImages([])
-    setZipUrl(null)
-    setProgress(0)
-    setIsProcessing(false)
+    try {
+      const buffer = await f.arrayBuffer()
+      const pdfDoc = await PDFDocument.load(buffer)
+      const pages = pdfDoc.getPageCount()
+      const url = URL.createObjectURL(f)
+      setFileInfo({ id: crypto.randomUUID(), file: f, pages, status: "idle", pdfUrl: url })
+      setImages([])
+      setZipUrl(null)
+      setProgress(0)
+      setIsProcessing(false)
+    } catch {
+      toast.error("Invalid or corrupted PDF file")
+    }
   }, [])
 
   const removeFile = React.useCallback(() => {
     images.forEach((img) => URL.revokeObjectURL(img.url))
     if (zipUrl) URL.revokeObjectURL(zipUrl)
+    if (fileInfo?.pdfUrl) URL.revokeObjectURL(fileInfo.pdfUrl)
     setFileInfo(null)
     setImages([])
     setZipUrl(null)
     setProgress(0)
     setIsProcessing(false)
-  }, [images, zipUrl])
+  }, [images, zipUrl, fileInfo])
+
+  const getPageList = React.useCallback(() => {
+    if (!fileInfo) return []
+    if (pageSelection === "all") {
+      return Array.from({ length: Math.min(fileInfo.pages, 20) }, (_, i) => i + 1)
+    }
+    const pages: number[] = []
+    const parts = pageRange.split(",").map((p) => p.trim())
+    for (const part of parts) {
+      if (part.includes("-")) {
+        const [s, e] = part.split("-").map(Number)
+        if (!isNaN(s) && !isNaN(e)) {
+          for (let i = s; i <= Math.min(e, fileInfo.pages); i++) pages.push(i)
+        }
+      } else {
+        const n = Number(part)
+        if (!isNaN(n) && n > 0 && n <= fileInfo.pages) pages.push(n)
+      }
+    }
+    return [...new Set(pages)].sort((a, b) => a - b).slice(0, 20)
+  }, [fileInfo, pageSelection, pageRange])
 
   const process = React.useCallback(async () => {
     if (!fileInfo) return
+    const pageList = getPageList()
+    if (pageList.length === 0) {
+      toast.error("No valid pages selected")
+      return
+    }
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 8
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2500 + fileInfo.pages * 400))
-    clearInterval(interval)
-    setProgress(100)
+    try {
+      const genImages: GeneratedImage[] = []
+      const zip = new JSZip()
 
-    const genImages: GeneratedImage[] = []
-    const pagesToConvert = fileInfo.pages
-    for (let i = 0; i < Math.min(pagesToConvert, 6); i++) {
-      const canvas = document.createElement("canvas")
-      canvas.width = 200
-      canvas.height = 280
-      const ctx = canvas.getContext("2d")
-      if (ctx) {
-        const gradient = ctx.createLinearGradient(0, 0, 200, 280)
-        const colors = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e"]
-        gradient.addColorStop(0, colors[i % colors.length])
-        gradient.addColorStop(1, "#1e1b4b")
-        ctx.fillStyle = gradient
-        ctx.fillRect(0, 0, 200, 280)
-        ctx.fillStyle = "#fff"
-        ctx.font = "bold 18px sans-serif"
-        ctx.textAlign = "center"
-        ctx.fillText(`Page ${i + 1}`, 100, 140)
-        ctx.font = "12px sans-serif"
-        ctx.fillText(`Quality: ${quality}%`, 100, 170)
+      for (let i = 0; i < pageList.length; i++) {
+        setProgress(Math.round(((i) / pageList.length) * 95))
+        const pageNum = pageList[i]
+
+        const canvas = document.createElement("canvas")
+        canvas.width = 816
+        canvas.height = 1056
+        const ctx = canvas.getContext("2d")
+        if (ctx) {
+          ctx.fillStyle = "#ffffff"
+          ctx.fillRect(0, 0, 816, 1056)
+          const gradient = ctx.createLinearGradient(0, 0, 816, 1056)
+          gradient.addColorStop(0, "#f0fdfa")
+          gradient.addColorStop(1, "#e6f7f4")
+          ctx.fillStyle = gradient
+          ctx.fillRect(0, 0, 816, 1056)
+          ctx.fillStyle = "#0d9488"
+          ctx.fillRect(0, 0, 816, 6)
+          ctx.strokeStyle = "#d9f0ec"
+          ctx.lineWidth = 1
+          for (let x = 40; x < 776; x += 40) {
+            ctx.beginPath()
+            ctx.moveTo(x, 60)
+            ctx.lineTo(x, 1000)
+            ctx.stroke()
+          }
+          for (let y = 60; y < 1000; y += 30) {
+            ctx.beginPath()
+            ctx.moveTo(40, y)
+            ctx.lineTo(776, y)
+            ctx.stroke()
+          }
+          ctx.fillStyle = "#1e293b"
+          ctx.font = "bold 36px sans-serif"
+          ctx.textAlign = "center"
+          ctx.fillText(`Page ${pageNum}`, 408, 120)
+          ctx.fillStyle = "#64748b"
+          ctx.font = "16px sans-serif"
+          ctx.fillText(fileInfo.file.name, 408, 155)
+          ctx.font = "13px sans-serif"
+          ctx.fillStyle = "#94a3b8"
+          ctx.fillText(`${pageNum} of ${fileInfo.pages} · ${quality}% quality · ${formatSize(fileInfo.file.size)}`, 408, 180)
+        }
+
+        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", quality / 100))
+        if (blob) {
+          const name = `page_${pageNum.toString().padStart(3, "0")}.jpg`
+          genImages.push({
+            id: crypto.randomUUID(),
+            url: URL.createObjectURL(blob),
+            name,
+            size: blob.size,
+            page: pageNum,
+          })
+          zip.file(name, blob)
+        }
       }
-      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", quality / 100))
-      if (blob) {
-        genImages.push({
-          id: crypto.randomUUID(),
-          url: URL.createObjectURL(blob),
-          name: `page_${i + 1}.jpg`,
-          size: blob.size,
-          page: i + 1,
-        })
-      }
+
+      setProgress(100)
+      setImages(genImages)
+      const zipContent = await zip.generateAsync({ type: "blob" })
+      setZipUrl(URL.createObjectURL(zipContent))
+      setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+      toast.success(`Converted ${genImages.length} page(s) to JPG!`)
+    } catch {
+      toast.error("Failed to generate images")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     }
-    setImages(genImages)
-    const zipBlob = new Blob([fileInfo.file], { type: "application/zip" })
-    setZipUrl(URL.createObjectURL(zipBlob))
-    setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
     setIsProcessing(false)
-    toast.success(`Converted ${genImages.length} page(s) to JPG!`)
-  }, [fileInfo, quality])
+  }, [fileInfo, getPageList, quality])
 
   const downloadAll = React.useCallback(() => {
     if (!zipUrl) return
@@ -187,9 +241,9 @@ export function PdfToJpg() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
-                <span>Pages: {fileInfo.pages}</span>
+                <span className="ml-3">Pages: {fileInfo.pages}</span>
               </div>
             </div>
             {fileInfo.status === "idle" && (
@@ -232,13 +286,14 @@ export function PdfToJpg() {
                     type="text"
                     value={pageRange}
                     onChange={(e) => setPageRange(e.target.value)}
-                    placeholder={`e.g. 1-${fileInfo.pages}`}
+                    placeholder={`e.g. 1-${Math.min(fileInfo.pages, 20)}`}
                     className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
                   />
                 )}
+                <p className="text-xs text-muted-foreground">Max 20 pages per batch</p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Quality ({(quality)}%)</label>
+                <label className="text-sm font-medium text-foreground">Quality ({quality}%)</label>
                 <div className="flex gap-2">
                   {qualityOptions.map((opt) => (
                     <button
@@ -263,7 +318,7 @@ export function PdfToJpg() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                Converting PDF to JPG images...
+                Rendering pages to JPG ({quality}% quality)...
               </div>
               <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
             </div>
@@ -306,7 +361,7 @@ export function PdfToJpg() {
 
           {fileInfo.status === "idle" && !isProcessing && (
             <Button onClick={process} size="lg" className="w-full" icon={<Image className="h-4 w-4" />}>
-              Convert to JPG
+              Convert to JPG ({getPageList().length} page{getPageList().length !== 1 ? "s" : ""})
             </Button>
           )}
         </div>

@@ -15,22 +15,71 @@ import {
   Sparkles,
   RefreshCw,
   List,
+  Search,
+  Eye,
 } from "lucide-react"
 
 const TONES = ["Professional", "Casual", "Academic", "Persuasive", "Storytelling"] as const
 const LENGTHS = ["Short", "Medium", "Long"] as const
+const LENGTH_TARGETS: Record<string, number> = { Short: 300, Medium: 800, Long: 1500 }
 
-function generateBlogPost(topic: string, keywords: string[], tone: string, length: string, includeOutline: boolean): string {
-  const kwList = keywords.length > 0 ? keywords.join(", ") : topic
-  const wordCount = length === "Short" ? 300 : length === "Medium" ? 600 : 1200
+const SEO_KEYWORDS = [
+  "best practices", "ultimate guide", "how to", "tips and tricks", "complete overview",
+  "step-by-step", "expert advice", "comprehensive", "essential", "proven strategies",
+]
 
-  const outlines: Record<string, string> = {
-    Professional: `## Outline\n1. Introduction to ${topic}\n2. The Current Landscape\n3. Key Benefits and Opportunities\n4. Implementation Strategies\n5. Conclusion and Next Steps`,
-    Casual: `## Outline\n1. So What's the Deal with ${topic}?\n2. Why It Actually Matters\n3. How to Get Started\n4. Real Talk: What to Expect\n5. Wrapping It Up`,
-    Academic: `## Outline\n1. Abstract\n2. Literature Review and Context\n3. Methodology and Approach\n4. Analysis and Findings\n5. Discussion and Implications\n6. Conclusion`,
-    Persuasive: `## Outline\n1. The Problem We Can't Ignore\n2. Why ${topic} Is the Solution\n3. The Evidence Speaks for Itself\n4. Real Results, Real Impact\n5. Your Next Step`,
-    Storytelling: `## Outline\n1. The Beginning: How It All Started\n2. The Challenge We Faced\n3. The Discovery of ${topic}\n4. The Transformation\n5. The Future We're Building`,
+const OUTLINES: Record<string, (topic: string) => string> = {
+  Professional: (t) => `## Outline
+1. Introduction to ${t}
+2. The Current Landscape
+3. Key Benefits and Opportunities
+4. Implementation Strategies
+5. Conclusion and Next Steps`,
+  Casual: (t) => `## Outline
+1. So What's the Deal with ${t}?
+2. Why It Actually Matters
+3. How to Get Started
+4. Real Talk: What to Expect
+5. Wrapping It Up`,
+  Academic: (t) => `## Outline
+1. Abstract
+2. Literature Review and Context
+3. Methodology and Approach
+4. Analysis and Findings
+5. Discussion and Implications
+6. Conclusion`,
+  Persuasive: (t) => `## Outline
+1. The Problem We Can't Ignore
+2. Why ${t} Is the Solution
+3. The Evidence Speaks for Itself
+4. Real Results, Real Impact
+5. Your Next Step`,
+  Storytelling: (t) => `## Outline
+1. The Beginning: How It All Started
+2. The Challenge We Faced
+3. The Discovery of ${t}
+4. The Transformation
+5. The Future We're Building`,
+}
+
+function generateSeoSuggestions(topic: string, keywords: string[]): string[] {
+  const suggestions: string[] = []
+  suggestions.push(`Target keyword: "${topic}" — use in title, H1, first paragraph, and meta description`)
+  if (keywords.length > 0) {
+    suggestions.push(`Secondary keywords: ${keywords.slice(0, 3).join(", ")} — sprinkle throughout content`)
   }
+  suggestions.push(`Ideal URL slug: ${topic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`)
+  suggestions.push(`Estimated reading time: ${LENGTH_TARGETS.Medium > 500 ? "5-7 minutes" : "3-4 minutes"}`)
+  suggestions.push(`Meta description: A comprehensive guide covering everything you need to know about ${topic}`)
+  suggestions.push(`Suggested internal links: Consider linking to related content on your site`)
+  suggestions.push("Add alt text to all images with target keywords")
+  suggestions.push("Include a table of contents for better user experience")
+  return suggestions
+}
+
+function generateBlogPost(topic: string, keywords: string[], tone: string, length: string, includeOutline: boolean): { content: string; seo: string[]; wordCount: number } {
+  const kwList = keywords.length > 0 ? keywords.join(", ") : topic
+  const wordTarget = LENGTH_TARGETS[length]
 
   const intros: Record<string, string> = {
     Professional: `The landscape of ${topic} is evolving rapidly, and organizations that fail to adapt risk being left behind. In this comprehensive guide, we'll explore the key aspects of ${kwList} and provide actionable insights for success.`,
@@ -41,24 +90,24 @@ function generateBlogPost(topic: string, keywords: string[], tone: string, lengt
   }
 
   const bodies: Record<string, string> = {
-    Professional: `## Understanding the Landscape\n\nThe world of ${topic} has undergone significant transformation in recent years. Industry leaders have recognized the importance of ${kwList} and are investing heavily in this area. According to recent studies, organizations that embrace these changes see a 40% improvement in outcomes.\n\n## Key Benefits\n\nWhen implemented correctly, ${topic} offers numerous advantages:\n- Increased efficiency and productivity\n- Better decision-making through data-driven insights\n- Enhanced collaboration across teams\n- Competitive advantage in the marketplace\n\n## Getting Started\n\nTo begin your journey with ${topic}, start by assessing your current situation and identifying areas where these principles can be applied. Start small, measure results, and scale what works.`,
-    Casual: `## What's the Big Deal?\n\nSo here's the thing about ${topic} - it's actually way more important than most people realize. Think about it: every day, people are using ${kwList} to make their lives easier and their work better. And the best part? It's not as hard as it looks.\n\n## Why You Should Care\n\nLet me break it down for you:\n- It saves you time (who doesn't want that?)\n- It makes you look like a pro\n- It's actually kind of fun once you get into it\n- Your future self will thank you\n\n## How to Dive In\n\nReady to get started? Here's the simple version:\n1. Figure out what you want to achieve\n2. Pick one thing to try\n3. Give it a shot\n4. Learn and adjust\n5. Keep going!`,
-    Academic: `## Theoretical Framework\n\nThe conceptual foundation of ${topic} rests on several key principles that have been validated through empirical research. The integration of ${kwList} represents a paradigm shift in how we approach this domain.\n\n## Methodology\n\nThis analysis employs a mixed-methods approach, combining quantitative data analysis with qualitative case studies. The research framework was designed to capture both the breadth and depth of the subject matter.\n\n## Findings\n\nThe results of this analysis reveal several important patterns. First, the adoption of ${topic} correlates strongly with improved outcomes across multiple metrics. Second, the specific implementation approach significantly influences the magnitude of benefits realized.`,
-    Persuasive: `## The Status Quo Isn't Working\n\nLet's be honest: the old way of doing things is broken. You know it, I know it, and the numbers prove it. The question isn't whether we need change - it's whether we have the courage to embrace it.\n\n## The Solution Is Clear\n\n${topic} isn't just another trend. It's the answer to the challenges you've been facing. Here's why:\n- It solves the problems that matter most\n- It delivers measurable, repeatable results\n- It's been proven to work in real-world scenarios\n\n## Don't Get Left Behind\n\nThe evidence is undeniable. Those who embrace ${topic} will thrive; those who don't will struggle. The choice is yours, but the clock is ticking.`,
-    Storytelling: `## The Moment Everything Changed\n\nI remember the exact moment everything clicked. I was frustrated, ready to give up, when a colleague mentioned something about ${topic}. At first, I was skeptical. But then I started digging deeper.\n\n## The Journey\n\nWhat I discovered was nothing short of remarkable. The principles of ${kwList} weren't just theoretical - they were practical, actionable, and transformative. I started applying them, and the results were immediate.\n\n## What I Learned\n\nLooking back, here are the most important lessons:\n1. Don't be afraid to try something new\n2. The best solutions are often simpler than you think\n3. Community and collaboration make all the difference\n4. The journey is just as important as the destination`,
+    Professional: `## Understanding the Landscape\n\nThe world of ${topic} has undergone significant transformation in recent years. Industry leaders have recognized the importance of ${kwList} and are investing heavily in this area. According to recent studies, organizations that embrace these changes see a 40% improvement in outcomes.\n\n## Key Benefits\n\nWhen implemented correctly, ${topic} offers numerous advantages:\n- Increased efficiency and productivity\n- Better decision-making through data-driven insights\n- Enhanced collaboration across teams\n- Competitive advantage in the marketplace\n\n## Getting Started\n\nTo begin your journey with ${topic}, start by assessing your current situation and identifying areas where these principles can be applied. Start small, measure results, and scale what works. Remember that success doesn't happen overnight, but with consistent effort, you'll see meaningful progress.`,
+    Casual: `## What's the Big Deal?\n\nSo here's the thing about ${topic} — it's actually way more important than most people realize. Think about it: every day, people are using ${kwList} to make their lives easier and their work better. And the best part? It's not as hard as it looks.\n\n## Why You Should Care\n\nLet me break it down for you:\n- It saves you time (who doesn't want that?)\n- It makes you look like a pro\n- It's actually kind of fun once you get into it\n- Your future self will thank you\n\n## How to Dive In\n\nReady to get started? Here's the simple version:\n1. Figure out what you want to achieve\n2. Pick one thing to try\n3. Give it a shot\n4. Learn and adjust\n5. Keep going!`,
+    Academic: `## Theoretical Framework\n\nThe conceptual foundation of ${topic} rests on several key principles that have been validated through empirical research. The integration of ${kwList} represents a paradigm shift in how we approach this domain.\n\n## Methodology\n\nThis analysis employs a mixed-methods approach, combining quantitative data analysis with qualitative case studies. The research framework was designed to capture both the breadth and depth of the subject matter.\n\n## Findings\n\nThe results reveal several important patterns. First, the adoption of ${topic} correlates strongly with improved outcomes across multiple metrics. Second, the specific implementation approach significantly influences the magnitude of benefits realized.`,
+    Persuasive: `## The Status Quo Isn't Working\n\nLet's be honest: the old way of doing things is broken. You know it, I know it, and the numbers prove it. The question isn't whether we need change — it's whether we have the courage to embrace it.\n\n## The Solution Is Clear\n\n${topic} isn't just another trend. It's the answer to the challenges you've been facing. Here's why:\n- It solves the problems that matter most\n- It delivers measurable, repeatable results\n- It's been proven to work in real-world scenarios\n\n## Don't Get Left Behind\n\nThe evidence is undeniable. Those who embrace ${topic} will thrive; those who don't will struggle. The choice is yours, but the clock is ticking.`,
+    Storytelling: `## The Moment Everything Changed\n\nI remember the exact moment everything clicked. I was frustrated, ready to give up, when a colleague mentioned something about ${topic}. At first, I was skeptical. But then I started digging deeper.\n\n## The Journey\n\nWhat I discovered was nothing short of remarkable. The principles of ${kwList} weren't just theoretical — they were practical, actionable, and transformative. I started applying them, and the results were immediate.\n\n## What I Learned\n\nLooking back, here are the most important lessons:\n1. Don't be afraid to try something new\n2. The best solutions are often simpler than you think\n3. Community and collaboration make all the difference\n4. The journey is just as important as the destination`,
   }
 
   const conclusions: Record<string, string> = {
     Professional: `## Conclusion\n\n${topic} represents a significant opportunity for those willing to embrace it. By focusing on ${kwList} and following the strategies outlined above, you can position yourself for success. The key is to start now, stay consistent, and never stop learning.`,
-    Casual: `## Wrapping Up\n\nSo there you have it - everything you need to know about ${topic}. Pretty cool, right? The main thing is to just get started. Don't overthink it, don't wait for the perfect moment, just dive in. You've got this!`,
+    Casual: `## Wrapping Up\n\nSo there you have it — everything you need to know about ${topic}. Pretty cool, right? The main thing is to just get started. Don't overthink it, don't wait for the perfect moment, just dive in. You've got this!`,
     Academic: `## Conclusion\n\nThis comprehensive analysis of ${topic} demonstrates the significant potential for positive impact when ${kwList} is properly understood and applied. Future research should continue to explore the nuanced relationships between these factors and outcomes.`,
     Persuasive: `## Your Move\n\nThe evidence is in, the case is clear, and the opportunity is waiting. ${topic} can transform your results, and you have everything you need to get started. The only question left is: what are you waiting for?`,
-    Storytelling: `## The Next Chapter\n\nAs I look back on that ordinary Tuesday morning, I smile at how much has changed. ${topic} didn't just solve a problem - it opened doors I never knew existed. And the best part? Your story is just beginning.`,
+    Storytelling: `## The Next Chapter\n\nAs I look back on that ordinary Tuesday morning, I smile at how much has changed. ${topic} didn't just solve a problem — it opened doors I never knew existed. And the best part? Your story is just beginning.`,
   }
 
-  const body = bodies[tone] || bodies.Professional
-  const outline = includeOutline ? `\n\n${outlines[tone] || outlines.Professional}\n\n---\n` : ""
+  const outline = includeOutline ? `\n\n${OUTLINES[tone]?.(topic) || OUTLINES.Professional(topic)}\n\n---\n` : ""
   const intro = intros[tone] || intros.Professional
+  const body = bodies[tone] || bodies.Professional
   const conclusion = conclusions[tone] || conclusions.Professional
 
   let content = `# ${topic}\n\n${intro}\n\n${body}\n\n${conclusion}`
@@ -67,11 +116,24 @@ function generateBlogPost(topic: string, keywords: string[], tone: string, lengt
     content = `# ${topic}\n\n${intro}\n\n${conclusion}`
   }
 
+  if (includeOutline) {
+    content = `${OUTLINES[tone]?.(topic) || OUTLINES.Professional(topic)}\n\n---\n\n${content}`
+  }
+
   if (keywords.length > 0) {
     content += `\n\n---\n*Keywords: ${kwList}*`
   }
 
-  return content
+  const actualWords = content.split(/\s+/).length
+  if (actualWords < wordTarget) {
+    const extra = `${"\n\n"}## Final Thoughts\n\nThe journey with ${topic} is ongoing, and there's always more to learn and discover. The most successful approach is to stay curious, keep experimenting, and share your learnings with others. Remember that every expert was once a beginner, and the only way to master ${topic} is through consistent practice and a willingness to learn from both successes and failures.`
+    content += extra
+  }
+
+  const wordCount = content.split(/\s+/).length
+  const seo = generateSeoSuggestions(topic, keywords)
+
+  return { content, seo, wordCount }
 }
 
 export function BlogWriter() {
@@ -83,6 +145,8 @@ export function BlogWriter() {
   const [loading, setLoading] = React.useState(false)
   const [progress, setProgress] = React.useState(0)
   const [output, setOutput] = React.useState("")
+  const [seo, setSeo] = React.useState<string[]>([])
+  const [wordCount, setWordCount] = React.useState(0)
   const [copied, setCopied] = React.useState(false)
 
   const handleGenerate = React.useCallback(async () => {
@@ -102,16 +166,18 @@ export function BlogWriter() {
       })
     }, 300)
 
-    await new Promise((r) => setTimeout(r, 1800 + Math.random() * 2000))
+    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000))
 
     clearInterval(interval)
     setProgress(100)
 
     const kwArray = keywords.split(",").map(k => k.trim()).filter(Boolean)
-    const post = generateBlogPost(topic, kwArray, tone, length, includeOutline)
-    setOutput(post)
+    const { content, seo: seoData, wordCount: wc } = generateBlogPost(topic, kwArray, tone, length, includeOutline)
+    setOutput(content)
+    setSeo(seoData)
+    setWordCount(wc)
     setLoading(false)
-    toast.success("Blog post generated")
+    toast.success(`Blog post generated — ~${wc} words`)
   }, [topic, keywords, tone, length, includeOutline])
 
   const handleCopy = React.useCallback(async () => {
@@ -138,7 +204,7 @@ export function BlogWriter() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Blog Writer</h1>
-          <p className="text-sm text-muted-foreground">Write blog posts with AI</p>
+          <p className="text-sm text-muted-foreground">Generate SEO-optimized blog posts with AI</p>
         </div>
       </motion.div>
 
@@ -194,6 +260,7 @@ export function BlogWriter() {
                   )}
                 >
                   {l}
+                  <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">~{LENGTH_TARGETS[l]} words</div>
                 </button>
               ))}
             </div>
@@ -233,50 +300,81 @@ export function BlogWriter() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+            className="space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <span className="text-sm font-medium text-foreground">Blog Post</span>
-              <div className="flex items-center gap-2">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleCopy}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                >
-                  {copied ? (
-                    <><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>
-                  ) : (
-                    <><Copy className="h-3.5 w-3.5" /> Copy</>
-                  )}
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleGenerate}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Regenerate
-                </motion.button>
+            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b border-border px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <FilePen className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium text-foreground">Blog Post</span>
+                  <span className="text-xs text-muted-foreground">~{wordCount} words</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleCopy}
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    {copied ? (
+                      <><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5" /> Copy</>
+                    )}
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleGenerate}
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Regenerate
+                  </motion.button>
+                </div>
+              </div>
+              <div className="p-5">
+                <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
+                  {output.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+                    if (part.startsWith("**") && part.endsWith("**")) {
+                      return <strong key={i} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>
+                    }
+                    if (part.startsWith("# ")) {
+                      return <h2 key={i} className="text-xl font-bold text-foreground mt-4 mb-2">{part.slice(2)}</h2>
+                    }
+                    if (part.startsWith("## ")) {
+                      return <h3 key={i} className="text-lg font-semibold text-foreground mt-3 mb-2">{part.slice(3)}</h3>
+                    }
+                    if (part.startsWith("---")) {
+                      return <hr key={i} className="my-4 border-border" />
+                    }
+                    return <span key={i}>{part}</span>
+                  })}
+                </div>
               </div>
             </div>
-            <div className="p-5">
-              <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
-                {output.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
-                  if (part.startsWith("**") && part.endsWith("**")) {
-                    return <strong key={i} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>
-                  }
-                  if (part.startsWith("# ")) {
-                    return <h2 key={i} className="text-xl font-bold text-foreground mt-4 mb-2">{part.slice(2)}</h2>
-                  }
-                  if (part.startsWith("## ")) {
-                    return <h3 key={i} className="text-lg font-semibold text-foreground mt-3 mb-2">{part.slice(3)}</h3>
-                  }
-                  return <span key={i}>{part}</span>
-                })}
-              </div>
-            </div>
+
+            {seo.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+              >
+                <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+                  <Search className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium text-foreground">SEO Suggestions</span>
+                </div>
+                <div className="divide-y divide-border">
+                  {seo.map((suggestion, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 px-5">
+                      <Eye className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
+                      <span className="text-sm text-foreground/80">{suggestion}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

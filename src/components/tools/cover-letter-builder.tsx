@@ -6,107 +6,144 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/toast"
-import { cn } from "@/lib/utils/cn"
-import { Download, Eye, EyeOff, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight } from "lucide-react"
+import { Download, Eye, EyeOff } from "lucide-react"
+import jsPDF from "jspdf"
 
 const TEMPLATES = [
-  { id: "modern", name: "Modern", desc: "Clean and contemporary" },
-  { id: "classic", name: "Classic", desc: "Traditional business format" },
-  { id: "minimal", name: "Minimal", desc: "Simple and elegant" },
+  { id: "standard", name: "Standard", color: "bg-teal-500" },
+  { id: "modern", name: "Modern", color: "bg-gradient-to-r from-teal-500 to-cyan-500" },
+  { id: "classic", name: "Classic", color: "bg-gray-900 dark:bg-gray-100" },
 ]
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-}
+const PLACEHOLDER = `Dear Hiring Manager,
+
+I am writing to express my strong interest in the [Position] role at [Company]. With my background in [Field] and proven track record of [Achievement], I am confident that my skills and experience align perfectly with the requirements of this position.
+
+Throughout my career, I have developed expertise in [Skill 1], [Skill 2], and [Skill 3], which I believe will enable me to make an immediate impact at [Company]. In my most recent role at [Previous Company], I successfully [Key Accomplishment].
+
+I am particularly drawn to [Company] because of [Reason for Interest]. I am excited about the opportunity to contribute to your team and would welcome the chance to discuss how my experience can benefit your organization.
+
+Thank you for considering my application. I look forward to the opportunity to speak with you soon.
+
+Sincerely,
+[Your Name]`
 
 export function CoverLetterBuilder() {
-  const [yourInfo, setYourInfo] = React.useState({ name: "", email: "", phone: "", address: "" })
-  const [recipient, setRecipient] = React.useState({ name: "", title: "", company: "", address: "" })
-  const [date, setDate] = React.useState(new Date().toISOString().split("T")[0])
-  const [subject, setSubject] = React.useState("")
+  const [sender, setSender] = React.useState({ name: "", email: "", phone: "", address: "" })
+  const [recipient, setRecipient] = React.useState({ name: "", company: "", address: "", position: "" })
   const [body, setBody] = React.useState("")
-  const [template, setTemplate] = React.useState("modern")
+  const [date, setDate] = React.useState(new Date().toISOString().split("T")[0])
+  const [template, setTemplate] = React.useState("standard")
   const [showPreview, setShowPreview] = React.useState(false)
 
-  const insertFormat = (tag: string) => {
-    const textarea = document.querySelector("textarea") as HTMLTextAreaElement
-    if (!textarea) return
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selected = body.substring(start, end)
-    const wrapped = selected ? `<${tag}>${selected}</${tag}>` : `<${tag}></${tag}>`
-    setBody(body.substring(0, start) + wrapped + body.substring(end))
+  const handleDownload = () => {
+    if (!sender.name) { toast.error("Please enter your name"); return }
+    if (!recipient.name) { toast.error("Please enter recipient name"); return }
+    if (!body) { toast.error("Please write a cover letter body"); return }
+
+    const doc = new jsPDF({ unit: "mm", format: "a4" })
+    const m = 25
+    let y = m
+
+    if (template === "modern") {
+      doc.setFillColor("#14b8a6")
+      doc.rect(0, 0, 210, 12, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(10)
+      doc.text("COVER LETTER", 105, 8, { align: "center" })
+    }
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.setTextColor(26, 26, 46)
+    doc.text(sender.name, m, y + 8)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    doc.setTextColor(100, 116, 139)
+    const senderLines = [sender.email, sender.phone, sender.address].filter(Boolean)
+    senderLines.forEach((l, i) => doc.text(l, m, y + 15 + i * 4))
+    y += senderLines.length * 4 + 20
+
+    doc.setFontSize(9)
+    doc.setTextColor(100, 116, 139)
+    doc.text(date, m, y)
+    y += 8
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    doc.setTextColor(71, 85, 105)
+    doc.text(recipient.name, m, y); y += 4
+    if (recipient.position) { doc.text(recipient.position, m, y); y += 4 }
+    doc.text(recipient.company, m, y); y += 4
+    doc.text(recipient.address, m, y); y += 8
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(10)
+    doc.setTextColor(26, 26, 46)
+    const processedBody = body
+      .replace(/\[Position\]/g, recipient.position || "the position")
+      .replace(/\[Company\]/g, recipient.company || "your company")
+      .replace(/\[Your Name\]/g, sender.name)
+    const lines = doc.splitTextToSize(processedBody, 160)
+    doc.text(lines, m, y)
+    y += lines.length * 5 + 10
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(10)
+    doc.setTextColor(26, 26, 46)
+    doc.text("Sincerely,", m, y); y += 8
+    doc.setFont("helvetica", "bold")
+    doc.text(sender.name, m, y)
+
+    if (template === "modern") {
+      doc.setFillColor("#14b8a6")
+      doc.rect(0, 295, 210, 2, "F")
+    } else if (template === "classic") {
+      doc.setDrawColor(26, 26, 46)
+      doc.setLineWidth(1)
+      doc.line(m, 12, 190, 12)
+      doc.line(m, 285, 190, 285)
+    }
+
+    doc.save(`cover-letter-${sender.name.replace(/\s+/g, "_")}.pdf`)
+    toast.success("Cover letter downloaded as PDF")
   }
 
-  const handleDownload = () => {
-    if (!yourInfo.name || !recipient.name) { toast.error("Please fill required fields"); return }
-    const w = window.open("", "_blank")
-    if (!w) { toast.error("Please allow pop-ups"); return }
-    const accent = template === "modern" ? "#3b82f6" : template === "classic" ? "#1e293b" : "#6b7280"
-    w.document.write(`
-      <html><head><title>Cover Letter - ${yourInfo.name}</title>
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 60px; max-width: 700px; margin: 0 auto; color: #1a1a2e; background: ${template === "minimal" ? "#fafafa" : "#fff"}; font-size: 14px; line-height: 1.6; }
-        .header { margin-bottom: 30px; }
-        .header h1 { font-size: 24px; color: ${accent}; margin: 0; }
-        .subject { font-weight: 600; margin-bottom: 20px; color: ${accent}; }
-        .body-text { white-space: pre-wrap; }
-        .signature { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-        @media print { body { padding: 40px; } }
-      </style></head><body>
-        <div class="header"><h1>${yourInfo.name}</h1><p>${yourInfo.email} | ${yourInfo.phone}<br>${yourInfo.address}</p></div>
-        <p>${formatDate(new Date(date))}</p>
-        <p>${recipient.name}<br>${recipient.title}<br>${recipient.company}<br>${recipient.address}</p>
-        ${subject ? `<p class="subject">Re: ${subject}</p>` : ""}
-        <p>Dear ${recipient.name.split(" ")[0] || "Hiring Manager"},</p>
-        <div class="body-text">${body.replace(/\n/g, "<br>")}</div>
-        <p>Sincerely,<br><strong>${yourInfo.name}</strong></p>
-        <div class="signature"><p style="font-size:12px;color:#64748b">${yourInfo.email} | ${yourInfo.phone}</p></div>
-      </body></html>
-    `)
-    w.document.close()
-    setTimeout(() => w.print(), 500)
-  }
+  const previewContent = body
+    .replace(/\[Position\]/g, recipient.position || "the position")
+    .replace(/\[Company\]/g, recipient.company || "your company")
+    .replace(/\[Your Name\]/g, sender.name)
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="mx-auto max-w-4xl space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500/10"><Download className="h-6 w-6 text-indigo-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Cover Letter Builder</h1><p className="text-sm text-muted-foreground">Write professional cover letters</p></div></div>
-        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
+        <div><h1 className="text-2xl font-bold text-foreground">Cover Letter Builder</h1><p className="text-sm text-muted-foreground">Professional cover letters with real PDF export</p></div>
+        <div className="flex items-center gap-2">
+          <Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button>
+          <Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download PDF</Button>
+        </div>
       </motion.div>
-      <div className="flex flex-wrap gap-2">{TEMPLATES.map((t) => (<button key={t.id} onClick={() => setTemplate(t.id)} className={cn("rounded-lg border px-4 py-2 text-sm transition-colors text-left", template === t.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50")}><div className="font-medium">{t.name}</div><div className="text-xs opacity-70">{t.desc}</div></button>))}</div>
+      <div className="flex flex-wrap gap-2">{TEMPLATES.map((t) => (<button key={t.id} onClick={() => setTemplate(t.id)} className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${template === t.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}><div className={`h-3 w-3 rounded-full ${t.color}`} />{t.name}</button>))}</div>
 
       <AnimatePresence mode="wait">
         {showPreview ? (
-          <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div key="preview" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
             <Card className="overflow-hidden p-0">
-              <div className={cn("bg-white p-10 dark:bg-gray-950", template === "minimal" && "bg-gray-50 dark:bg-gray-900")}>
-                <div className="border-b pb-4 mb-6" style={{ borderColor: template === "modern" ? "#3b82f6" : template === "classic" ? "#1e293b" : "#6b7280" }}>
-                  <h1 className="text-2xl font-bold" style={{ color: template === "modern" ? "#3b82f6" : template === "classic" ? "#1e293b" : "#6b7280" }}>{yourInfo.name || "Your Name"}</h1>
-                  <p className="text-sm text-muted-foreground">{yourInfo.email}{yourInfo.phone && ` | ${yourInfo.phone}`}<br />{yourInfo.address}</p>
-                </div>
-                <p className="text-sm text-muted-foreground">{formatDate(new Date(date))}</p>
-                <p className="mt-4 text-sm">{recipient.name || "Recipient Name"}<br />{recipient.title}<br />{recipient.company}<br />{recipient.address}</p>
-                {subject && <p className="mt-4 font-semibold" style={{ color: template === "modern" ? "#3b82f6" : template === "classic" ? "#1e293b" : "#6b7280" }}>Re: {subject}</p>}
-                <p className="mt-4">Dear {recipient.name.split(" ")[0] || "Hiring Manager"},</p>
-                <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground" dangerouslySetInnerHTML={{ __html: body.replace(/\n/g, "<br>") }} />
-                <p className="mt-6">Sincerely,<br /><strong>{yourInfo.name || "Your Name"}</strong></p>
+              <div className="bg-white p-8 dark:bg-gray-950">
+                <div className="border-b border-teal-200 pb-4 dark:border-teal-800"><h1 className="text-xl font-bold text-foreground">{sender.name || "Your Name"}</h1><p className="text-sm text-muted-foreground">{[sender.email, sender.phone, sender.address].filter(Boolean).join(" | ") || "Contact info"}</p></div>
+                <p className="mt-4 text-sm text-muted-foreground">{date || new Date().toLocaleDateString()}</p>
+                <div className="mt-6 text-sm text-foreground"><p>{recipient.name || "Recipient"}</p>{recipient.position && <p>{recipient.position}</p>}<p>{recipient.company || "Company"}</p><p>{recipient.address}</p></div>
+                <div className="mt-6 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{previewContent || "Your letter content will appear here..."}</div>
               </div>
             </Card>
           </motion.div>
         ) : (
           <motion.div key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <Card><h3 className="mb-4 font-semibold text-foreground">Your Information</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Full Name" value={yourInfo.name} onChange={(e) => setYourInfo({ ...yourInfo, name: e.target.value })} /><Input label="Email" type="email" value={yourInfo.email} onChange={(e) => setYourInfo({ ...yourInfo, email: e.target.value })} /><Input label="Phone" value={yourInfo.phone} onChange={(e) => setYourInfo({ ...yourInfo, phone: e.target.value })} /><Input label="Address" value={yourInfo.address} onChange={(e) => setYourInfo({ ...yourInfo, address: e.target.value })} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Recipient Information</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Recipient Name" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} /><Input label="Title" value={recipient.title} onChange={(e) => setRecipient({ ...recipient, title: e.target.value })} /><Input label="Company" value={recipient.company} onChange={(e) => setRecipient({ ...recipient, company: e.target.value })} /><Input label="Address" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Letter Details</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /><Input label="Subject Line" value={subject} onChange={(e) => setSubject(e.target.value)} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Body</h3>
-              <div className="mb-3 flex flex-wrap items-center gap-1 rounded-lg border border-border bg-muted/30 p-1">
-                {[{ icon: Bold, tag: "b", label: "Bold" }, { icon: Italic, tag: "i", label: "Italic" }, { icon: Underline, tag: "u", label: "Underline" }].map(({ icon: Icon, tag, label }) => (<button key={tag} onClick={() => insertFormat(tag)} title={label} className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"><Icon className="h-4 w-4" /></button>))}
-                <span className="mx-1 h-5 w-px bg-border" />
-                {[{ icon: AlignLeft, value: "left" }, { icon: AlignCenter, value: "center" }, { icon: AlignRight, value: "right" }].map(({ icon: Icon, value }) => (<button key={value} onClick={() => {}} title={`Align ${value}`} className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"><Icon className="h-4 w-4" /></button>))}
-              </div>
-              <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" placeholder="Write your cover letter here..." />
-            </Card>
+            <Card><h3 className="mb-4 font-semibold text-foreground">Sender Information</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Your Name" value={sender.name} onChange={(e) => setSender({ ...sender, name: e.target.value })} /><Input label="Email" type="email" value={sender.email} onChange={(e) => setSender({ ...sender, email: e.target.value })} /><Input label="Phone" value={sender.phone} onChange={(e) => setSender({ ...sender, phone: e.target.value })} /><Input label="Address" value={sender.address} onChange={(e) => setSender({ ...sender, address: e.target.value })} /></div></Card>
+            <Card><h3 className="mb-4 font-semibold text-foreground">Recipient Information</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Hiring Manager / Name" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} /><Input label="Position" value={recipient.position} onChange={(e) => setRecipient({ ...recipient, position: e.target.value })} /><Input label="Company" value={recipient.company} onChange={(e) => setRecipient({ ...recipient, company: e.target.value })} /><Input label="Company Address" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} /></div></Card>
+            <Card><div className="flex items-center justify-between mb-2"><h3 className="font-semibold text-foreground">Letter Body</h3><span className="text-xs text-muted-foreground">Use [Position], [Company], [Your Name] as placeholders</span></div><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={16} className="w-full resize-y rounded-lg border border-input bg-background p-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" placeholder={PLACEHOLDER} /></Card>
+            <Card><Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Card>
           </motion.div>
         )}
       </AnimatePresence>

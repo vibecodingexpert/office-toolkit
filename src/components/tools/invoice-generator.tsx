@@ -20,6 +20,7 @@ import {
   Truck,
   Landmark,
 } from "lucide-react"
+import jsPDF from "jspdf"
 
 interface LineItem {
   id: string
@@ -31,13 +32,13 @@ interface LineItem {
 
 const CURRENCIES = [
   { code: "USD", symbol: "$", name: "US Dollar" },
-  { code: "EUR", symbol: "€", name: "Euro" },
-  { code: "GBP", symbol: "£", name: "British Pound" },
-  { code: "INR", symbol: "₹", name: "Indian Rupee" },
-  { code: "JPY", symbol: "¥", name: "Japanese Yen" },
+  { code: "EUR", symbol: "\u20AC", name: "Euro" },
+  { code: "GBP", symbol: "\u00A3", name: "British Pound" },
+  { code: "INR", symbol: "\u20B9", name: "Indian Rupee" },
+  { code: "JPY", symbol: "\u00A5", name: "Japanese Yen" },
   { code: "CAD", symbol: "C$", name: "Canadian Dollar" },
   { code: "AUD", symbol: "A$", name: "Australian Dollar" },
-  { code: "CNY", symbol: "¥", name: "Chinese Yuan" },
+  { code: "CNY", symbol: "\u00A5", name: "Chinese Yuan" },
 ]
 
 function generateInvoiceNumber(): string {
@@ -103,72 +104,157 @@ export function InvoiceGenerator() {
     }
   }
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!company.name || !client.name) {
       toast.error("Please fill in company and client information")
       return
     }
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) {
-      toast.error("Please allow pop-ups to download")
-      return
+
+    const doc = new jsPDF({ unit: "mm", format: "a4" })
+    const pageW = 210
+    const margin = 20
+    let y = margin
+    const col = (x: number) => margin + x
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(24)
+    doc.setTextColor(26, 26, 46)
+    doc.text("INVOICE", col(0), y)
+    doc.setFontSize(10)
+    doc.setTextColor(100, 116, 139)
+    doc.text(invoiceNum, col(0), y + 6)
+    y += 15
+
+    if (logo) {
+      try {
+        doc.addImage(logo, "PNG", col(0), y, 30, 15)
+      } catch { }
+      y += 20
     }
-    printWindow.document.write(`
-      <html><head><title>Invoice ${invoiceNum}</title>
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; color: #1a1a2e; max-width: 800px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
-        .invoice-title { font-size: 32px; font-weight: 800; color: #1a1a2e; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
-        .invoice-number { color: #64748b; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th { background: #f8fafc; text-align: left; padding: 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; border-bottom: 2px solid #e2e8f0; }
-        td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
-        .total-row td { font-weight: 700; font-size: 16px; border-top: 2px solid #1a1a2e; }
-        .totals { margin-left: auto; width: 300px; }
-        .totals table { margin: 0; }
-        .totals td { padding: 8px 12px; border: none; }
-        .grand-total { font-size: 20px; font-weight: 800; color: #1a1a2e; }
-        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; }
-        @media print { body { padding: 0; } }
-      </style></head><body>
-        <div class="header">
-          <div>${logo ? `<img src="${logo}" style="max-height:60px;margin-bottom:10px">` : ""}
-            <h1 class="invoice-title">INVOICE</h1>
-            <p class="invoice-number">${invoiceNum}</p>
-          </div>
-          <div style="text-align:right">
-            ${company.name ? `<p style="font-weight:700">${company.name}</p>` : ""}
-            ${company.address ? `<p>${company.address}</p>` : ""}
-            ${company.email ? `<p>${company.email}</p>` : ""}
-            ${company.phone ? `<p>${company.phone}</p>` : ""}
-          </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:30px">
-          <div><strong>Bill To:</strong><br>${client.name}<br>${client.address}<br>${client.email}<br>${client.phone}</div>
-          <div style="text-align:right">
-            <strong>Date:</strong> ${formatDate(new Date(date))}<br>
-            <strong>Due Date:</strong> ${dueDate ? formatDate(new Date(dueDate)) : "N/A"}
-          </div>
-        </div>
-        <table>
-          <tr><th>Description</th><th>Qty</th><th>Rate</th><th style="text-align:right">Amount</th></tr>
-          ${lineItems.filter(i => i.description).map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${currencySymbol}${i.rate.toFixed(2)}</td><td style="text-align:right">${currencySymbol}${i.amount.toFixed(2)}</td></tr>`).join("")}
-        </table>
-        <div class="totals">
-          <table>
-            <tr><td>Subtotal</td><td style="text-align:right">${currencySymbol}${subtotal.toFixed(2)}</td></tr>
-            ${taxRate > 0 ? `<tr><td>Tax (${taxRate}%)</td><td style="text-align:right">${currencySymbol}${taxAmount.toFixed(2)}</td></tr>` : ""}
-            ${discount > 0 ? `<tr><td>Discount</td><td style="text-align:right">-${currencySymbol}${discount.toFixed(2)}</td></tr>` : ""}
-            ${shipping > 0 ? `<tr><td>Shipping</td><td style="text-align:right">${currencySymbol}${shipping.toFixed(2)}</td></tr>` : ""}
-            <tr class="total-row"><td>Total</td><td style="text-align:right" class="grand-total">${currencySymbol}${total.toFixed(2)}</td></tr>
-          </table>
-        </div>
-        ${notes ? `<div class="footer"><strong>Notes:</strong><br>${notes}</div>` : ""}
-        ${terms ? `<div class="footer"><strong>Terms:</strong><br>${terms}</div>` : ""}
-      </body></html>
-    `)
-    printWindow.document.close()
-    setTimeout(() => printWindow.print(), 500)
+
+    doc.setFontSize(10)
+    doc.setTextColor(100, 116, 139)
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(26, 26, 46)
+    doc.text(company.name, col(0), y)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(100, 116, 139)
+    if (company.address) { y += 5; doc.text(company.address, col(0), y) }
+    if (company.email) { y += 5; doc.text(company.email, col(0), y) }
+    if (company.phone) { y += 5; doc.text(company.phone, col(0), y) }
+    y += 10
+
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(26, 26, 46)
+    doc.text("Bill To:", col(0), y)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(100, 116, 139)
+    y += 5
+    doc.text(client.name, col(0), y)
+    if (client.address) { y += 5; doc.text(client.address, col(0), y) }
+    if (client.email) { y += 5; doc.text(client.email, col(0), y) }
+    if (client.phone) { y += 5; doc.text(client.phone, col(0), y) }
+
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(26, 26, 46)
+    doc.text("Date:", pageW - margin - 30, margin + 15)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(100, 116, 139)
+    doc.text(formatDate(new Date(date)), pageW - margin, margin + 15, { align: "right" })
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(26, 26, 46)
+    doc.text("Due Date:", pageW - margin - 30, margin + 21)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(100, 116, 139)
+    doc.text(dueDate ? formatDate(new Date(dueDate)) : "N/A", pageW - margin, margin + 21, { align: "right" })
+
+    y = Math.max(y + 10, 80)
+
+    const tableTop = y
+    doc.setFillColor(248, 250, 252)
+    doc.rect(margin, tableTop - 4, pageW - 2 * margin, 8, "F")
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text("DESCRIPTION", margin + 2, tableTop)
+    doc.text("QTY", pageW - margin - 55, tableTop)
+    doc.text("RATE", pageW - margin - 35, tableTop)
+    doc.text("AMOUNT", pageW - margin - 15, tableTop, { align: "right" })
+    y = tableTop + 10
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    doc.setTextColor(26, 26, 46)
+
+    const items = lineItems.filter((i) => i.description)
+    for (const item of items) {
+      if (y > 270) { doc.addPage(); y = margin + 10 }
+      doc.text(item.description, margin + 2, y)
+      doc.text(String(item.quantity), pageW - margin - 55, y)
+      doc.text(`${currencySymbol}${item.rate.toFixed(2)}`, pageW - margin - 35, y)
+      doc.text(`${currencySymbol}${item.amount.toFixed(2)}`, pageW - margin - 15, y, { align: "right" })
+      y += 7
+    }
+
+    y += 5
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    doc.setTextColor(100, 116, 139)
+    let tx = pageW - margin - 55
+    doc.text("Subtotal:", tx, y)
+    doc.text(`${currencySymbol}${subtotal.toFixed(2)}`, pageW - margin - 15, y, { align: "right" })
+    y += 6
+    if (taxRate > 0) {
+      doc.text(`Tax (${taxRate}%):`, tx, y)
+      doc.text(`${currencySymbol}${taxAmount.toFixed(2)}`, pageW - margin - 15, y, { align: "right" })
+      y += 6
+    }
+    if (discount > 0) {
+      doc.text("Discount:", tx, y)
+      doc.text(`-${currencySymbol}${discount.toFixed(2)}`, pageW - margin - 15, y, { align: "right" })
+      y += 6
+    }
+    if (shipping > 0) {
+      doc.text("Shipping:", tx, y)
+      doc.text(`${currencySymbol}${shipping.toFixed(2)}`, pageW - margin - 15, y, { align: "right" })
+      y += 6
+    }
+    doc.setDrawColor(26, 26, 46)
+    doc.line(tx, y, pageW - margin, y)
+    y += 2
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.setTextColor(26, 26, 46)
+    doc.text("Total:", tx, y)
+    doc.text(`${currencySymbol}${total.toFixed(2)}`, pageW - margin - 15, y, { align: "right" })
+
+    if (notes || terms) {
+      y = Math.max(y + 15, 250)
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(9)
+      doc.setTextColor(26, 26, 46)
+      if (notes) {
+        doc.text("Notes:", margin, y)
+        doc.setFont("helvetica", "normal")
+        doc.setTextColor(100, 116, 139)
+        doc.setFontSize(8)
+        doc.text(notes, margin, y + 5)
+        y += 10
+      }
+      if (terms) {
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(9)
+        doc.setTextColor(26, 26, 46)
+        doc.text("Terms:", margin, y)
+        doc.setFont("helvetica", "normal")
+        doc.setTextColor(100, 116, 139)
+        doc.setFontSize(8)
+        doc.text(terms, margin, y + 5)
+      }
+    }
+
+    doc.save(`invoice-${invoiceNum}.pdf`)
+    toast.success("Invoice downloaded as PDF")
   }
 
   return (
@@ -181,7 +267,7 @@ export function InvoiceGenerator() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-foreground">Invoice Generator</h1>
-              <p className="text-sm text-muted-foreground">Create professional invoices</p>
+              <p className="text-sm text-muted-foreground">Create professional invoices with PDF export</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -190,7 +276,7 @@ export function InvoiceGenerator() {
               {showPreview ? "Edit" : "Preview"}
             </Button>
             <Button variant="primary" size="sm" onClick={handleDownload}>
-              <Download className="h-4 w-4" /> Download
+              <Download className="h-4 w-4" /> Download PDF
             </Button>
           </div>
         </div>
@@ -217,7 +303,7 @@ export function InvoiceGenerator() {
                 <div className="mt-8 flex justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Bill To</p>
-                    <p className="mt-1 font-medium text-gray-900 dark:text-white">{client.name || "—"}</p>
+                    <p className="mt-1 font-medium text-gray-900 dark:text-white">{client.name || "\u2014"}</p>
                     <p className="text-sm text-gray-500">{client.address}</p>
                     <p className="text-sm text-gray-500">{client.email}</p>
                     <p className="text-sm text-gray-500">{client.phone}</p>
@@ -226,7 +312,7 @@ export function InvoiceGenerator() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Date</p>
                     <p className="mt-1 text-gray-900 dark:text-white">{formatDate(new Date(date))}</p>
                     <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Due Date</p>
-                    <p className="mt-1 text-gray-900 dark:text-white">{dueDate ? formatDate(new Date(dueDate)) : "—"}</p>
+                    <p className="mt-1 text-gray-900 dark:text-white">{dueDate ? formatDate(new Date(dueDate)) : "\u2014"}</p>
                   </div>
                 </div>
                 <table className="mt-8 w-full">
@@ -344,7 +430,7 @@ export function InvoiceGenerator() {
             <Card>
               <h3 className="mb-4 font-semibold text-foreground">Summary</h3>
               <div className="grid gap-4 sm:grid-cols-3">
-                <Input label={`Tax Rate (%)`} type="number" min="0" max="100" step="0.1" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} icon={<Percent className="h-4 w-4" />} />
+                <Input label="Tax Rate (%)" type="number" min="0" max="100" step="0.1" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} icon={<Percent className="h-4 w-4" />} />
                 <Input label="Discount" type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(Number(e.target.value))} icon={<DollarSign className="h-4 w-4" />} />
                 <Input label="Shipping" type="number" min="0" step="0.01" value={shipping} onChange={(e) => setShipping(Number(e.target.value))} icon={<Truck className="h-4 w-4" />} />
               </div>

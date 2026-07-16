@@ -6,93 +6,132 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/toast"
-import { cn } from "@/lib/utils/cn"
-import { Download, FilePen, Eye, EyeOff } from "lucide-react"
+import { Download, Eye, EyeOff } from "lucide-react"
+import jsPDF from "jspdf"
 
 const LETTER_TYPES = [
   { id: "formal", name: "Formal Letter" },
-  { id: "business", name: "Business Letter" },
-  { id: "resignation", name: "Resignation Letter" },
-  { id: "recommendation", name: "Recommendation Letter" },
-  { id: "complaint", name: "Complaint Letter" },
-  { id: "apology", name: "Apology Letter" },
-  { id: "inquiry", name: "Inquiry Letter" },
-  { id: "cover", name: "Cover Letter" },
+  { id: "complaint", name: "Complaint" },
+  { id: "inquiry", name: "Inquiry" },
+  { id: "resignation", name: "Resignation" },
 ]
 
+const TEMPLATES: Record<string, string> = {
+  formal: "Dear [Recipient],\n\nI am writing to formally [state purpose]. [Provide relevant details and context here.]\n\nI look forward to your response at your earliest convenience.\n\nSincerely,\n[Sender Name]",
+  complaint: "Dear [Recipient],\n\nI am writing to bring to your attention an issue regarding [subject]. On [date], I [describe the issue].\n\nI request that you look into this matter and take appropriate action.\n\nThank you for your attention to this matter.\n\nSincerely,\n[Sender Name]",
+  inquiry: "Dear [Recipient],\n\nI hope this message finds you well. I am writing to inquire about [topic/opportunity].\n\nSpecifically, I would like to know:\n- [Question 1]\n- [Question 2]\n- [Question 3]\n\nThank you for your time, and I look forward to hearing from you.\n\nBest regards,\n[Sender Name]",
+  resignation: "Dear [Recipient],\n\nPlease accept this letter as formal notification that I am resigning from my position as [Position] at [Company]. My last day will be [Date].\n\nI want to thank you for the opportunities for growth and development during my tenure.\n\nI will ensure a smooth handover of my responsibilities before my departure.\n\nSincerely,\n[Sender Name]",
+}
+
 export function LetterGenerator() {
-  const [letterType, setLetterType] = React.useState("formal")
   const [sender, setSender] = React.useState({ name: "", address: "", email: "", phone: "" })
   const [recipient, setRecipient] = React.useState({ name: "", title: "", company: "", address: "" })
-  const [date, setDate] = React.useState(new Date().toISOString().split("T")[0])
+  const [letterType, setLetterType] = React.useState("formal")
   const [subject, setSubject] = React.useState("")
-  const [body, setBody] = React.useState("")
-  const [signature, setSignature] = React.useState("")
-  const [showPreview, setShowPreview] = React.useState(false)
+  const [body, setBody] = React.useState(TEMPLATES.formal)
+  const [date, setDate] = React.useState(new Date().toISOString().split("T")[0])
+  const [showPreview, setShowPreview] = React.useState(true)
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+  React.useEffect(() => {
+    setBody(TEMPLATES[letterType] || TEMPLATES.formal)
+  }, [letterType])
+
+  const processedBody = body
+    .replace(/\[Sender Name\]/g, sender.name)
+    .replace(/\[Recipient\]/g, recipient.name)
+    .replace(/\[Company\]/g, recipient.company)
+    .replace(/\[Position\]/g, recipient.title)
+    .replace(/\[Date\]/g, date)
 
   const handleDownload = () => {
-    if (!sender.name || !recipient.name) { toast.error("Please fill required fields"); return }
-    const w = window.open("", "_blank")
-    if (!w) { toast.error("Please allow pop-ups"); return }
-    w.document.write(`
-      <html><head><title>${letterType.charAt(0).toUpperCase() + letterType.slice(1)} Letter</title>
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 60px; max-width: 700px; margin: 0 auto; color: #1a1a2e; font-size: 14px; line-height: 1.6; }
-        .sender { margin-bottom: 30px; }
-        .recipient { margin-bottom: 20px; }
-        .subject { font-weight: 600; margin-bottom: 20px; }
-        .body-text { white-space: pre-wrap; }
-        .signature { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-        @media print { body { padding: 40px; } }
-      </style></head><body>
-        <div class="sender"><strong>${sender.name}</strong><br>${sender.address.replace(/\n/g, "<br>")}<br>${sender.email} | ${sender.phone}</div>
-        <p>${formatDate(date)}</p>
-        <div class="recipient"><strong>${recipient.name}</strong><br>${recipient.title}<br>${recipient.company}<br>${recipient.address.replace(/\n/g, "<br>")}</div>
-        ${subject ? `<div class="subject">Re: ${subject}</div>` : ""}
-        <p>Dear ${recipient.name.split(" ")[0] || "Sir/Madam"},</p>
-        <div class="body-text">${body.replace(/\n/g, "<br>")}</div>
-        <p>Sincerely,</p>
-        <div class="signature"><strong>${signature || sender.name}</strong></div>
-      </body></html>
-    `)
-    w.document.close()
-    setTimeout(() => w.print(), 500)
+    if (!sender.name) { toast.error("Please enter your name"); return }
+    if (!body) { toast.error("Please write letter content"); return }
+    const doc = new jsPDF({ unit: "mm", format: "a4" })
+    const m = 25
+    let y = m
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.setTextColor(26, 26, 46)
+    doc.text(sender.name, m, y); y += 5
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    doc.setTextColor(100, 116, 139)
+    const senderLines = [sender.address, sender.email, sender.phone].filter(Boolean)
+    senderLines.forEach((l) => { doc.text(l, m, y); y += 4 })
+    y += 4
+
+    doc.text(date, m, y); y += 8
+
+    if (recipient.name) {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.setTextColor(71, 85, 105)
+      doc.text(recipient.name, m, y); y += 4
+      if (recipient.title) { doc.text(recipient.title, m, y); y += 4 }
+      if (recipient.company) { doc.text(recipient.company, m, y); y += 4 }
+      if (recipient.address) { doc.text(recipient.address, m, y); y += 4 }
+      y += 4
+    }
+
+    if (subject) {
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(11)
+      doc.setTextColor(26, 26, 46)
+      doc.text(`Re: ${subject}`, m, y); y += 8
+    }
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(10)
+    doc.setTextColor(26, 26, 46)
+    const lines = doc.splitTextToSize(processedBody, 160)
+    doc.text(lines, m, y)
+
+    const stampY = 250
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(148, 163, 184)
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 290, { align: "center" })
+
+    doc.save(`letter-${subject ? subject.replace(/\s+/g, "_") : "letter"}.pdf`)
+    toast.success("Letter downloaded as PDF")
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-500/10"><FilePen className="h-6 w-6 text-slate-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Letter Generator</h1><p className="text-sm text-muted-foreground">Write formal letters</p></div></div>
-        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
+        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10"><Download className="h-6 w-6 text-teal-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Letter Generator</h1><p className="text-sm text-muted-foreground">Professional formal letters with PDF export</p></div></div>
+        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download PDF</Button></div>
       </motion.div>
-
-      <div className="flex flex-wrap gap-2">{LETTER_TYPES.map((lt) => (<button key={lt.id} onClick={() => setLetterType(lt.id)} className={cn("rounded-lg border px-3 py-1.5 text-sm transition-colors", letterType === lt.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50")}>{lt.name}</button>))}</div>
+      <div className="flex flex-wrap gap-2">{LETTER_TYPES.map((lt) => (<button key={lt.id} onClick={() => setLetterType(lt.id)} className={`rounded-lg border px-4 py-2 text-sm transition-colors ${letterType === lt.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>{lt.name}</button>))}</div>
 
       <AnimatePresence mode="wait">
         {showPreview ? (
-          <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div key="preview" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
             <Card className="overflow-hidden p-0">
-              <div className="bg-white p-10 dark:bg-gray-950 text-sm leading-relaxed">
-                <div className="mb-8"><strong className="text-foreground">{sender.name || "Your Name"}</strong><br /><span className="text-muted-foreground">{sender.address}<br />{sender.email} | {sender.phone}</span></div>
-                <p className="text-muted-foreground">{formatDate(date)}</p>
-                <div className="mt-4 mb-6"><strong className="text-foreground">{recipient.name || "Recipient"}</strong><br /><span className="text-muted-foreground">{recipient.title}<br />{recipient.company}<br />{recipient.address}</span></div>
-                {subject && <p className="mb-4 font-semibold text-foreground">Re: {subject}</p>}
-                <p className="text-muted-foreground">Dear {recipient.name.split(" ")[0] || "Sir/Madam"},</p>
-                <div className="mt-4 whitespace-pre-wrap text-muted-foreground">{body}</div>
-                <p className="mt-8 text-muted-foreground">Sincerely,</p>
-                <div className="mt-2 font-semibold text-foreground">{signature || sender.name || "Your Name"}</div>
+              <div className="bg-white p-8 dark:bg-gray-950">
+                <div className="border-b border-teal-200 pb-3 dark:border-teal-800"><h2 className="text-lg font-bold text-foreground">{sender.name || "Your Name"}</h2><p className="text-xs text-muted-foreground">{[sender.address, sender.email, sender.phone].filter(Boolean).join(" | ")}</p></div>
+                <p className="mt-3 text-sm text-muted-foreground">{new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</p>
+                {recipient.name && <div className="mt-4 text-sm text-foreground"><p>{recipient.name}</p>{recipient.title && <p>{recipient.title}</p>}{recipient.company && <p>{recipient.company}</p>}<p>{recipient.address}</p></div>}
+                {subject && <h3 className="mt-4 text-base font-bold text-foreground">Re: {subject}</h3>}
+                <div className="mt-6 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{processedBody || "Your letter content will appear here..."}</div>
               </div>
             </Card>
           </motion.div>
         ) : (
-          <motion.div key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <Card><h3 className="mb-4 font-semibold text-foreground">Sender</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Name" value={sender.name} onChange={(e) => setSender({ ...sender, name: e.target.value })} /><Input label="Email" type="email" value={sender.email} onChange={(e) => setSender({ ...sender, email: e.target.value })} /><Input label="Phone" value={sender.phone} onChange={(e) => setSender({ ...sender, phone: e.target.value })} /><Input label="Address" value={sender.address} onChange={(e) => setSender({ ...sender, address: e.target.value })} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Recipient</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Name" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} /><Input label="Title" value={recipient.title} onChange={(e) => setRecipient({ ...recipient, title: e.target.value })} /><Input label="Company" value={recipient.company} onChange={(e) => setRecipient({ ...recipient, company: e.target.value })} /><Input label="Address" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Letter Details</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /><Input label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Body</h3><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" placeholder="Write your letter here..." /></Card>
-            <Card><Input label="Signature" value={signature} onChange={(e) => setSignature(e.target.value)} placeholder="Your signed name" /></Card>
+          <motion.div key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
+              <Card><h3 className="mb-4 font-semibold text-foreground">Sender</h3><Input label="Your Name" value={sender.name} onChange={(e) => setSender({ ...sender, name: e.target.value })} /><div className="mt-3"><Input label="Address" value={sender.address} onChange={(e) => setSender({ ...sender, address: e.target.value })} /></div><div className="mt-3 grid grid-cols-2 gap-3"><Input label="Email" type="email" value={sender.email} onChange={(e) => setSender({ ...sender, email: e.target.value })} /><Input label="Phone" value={sender.phone} onChange={(e) => setSender({ ...sender, phone: e.target.value })} /></div></Card>
+              <Card><h3 className="mb-4 font-semibold text-foreground">Recipient</h3><Input label="Recipient Name" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} /><div className="mt-3"><Input label="Title / Position" value={recipient.title} onChange={(e) => setRecipient({ ...recipient, title: e.target.value })} /></div><div className="mt-3"><Input label="Company" value={recipient.company} onChange={(e) => setRecipient({ ...recipient, company: e.target.value })} /></div><div className="mt-3"><Input label="Address" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} /></div></Card>
+            </div>
+            <div className="space-y-6">
+              <Card><Input label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Inquiry Regarding Services" /></Card>
+              <Card><Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Card>
+              <Card>
+                <div className="flex items-center justify-between mb-2"><h3 className="font-semibold text-foreground">Letter Body</h3><span className="text-xs text-muted-foreground">Use [Sender Name], [Recipient], [Company], [Position], [Date] as placeholders</span></div>
+                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={20} className="w-full resize-y rounded-lg border border-input bg-background p-4 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" />
+              </Card>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

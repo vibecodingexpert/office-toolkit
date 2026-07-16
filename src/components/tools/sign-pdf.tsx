@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, Pen, Type, Image,
 } from "lucide-react"
+import { PDFDocument } from "pdf-lib"
 
 interface FileInfo {
   id: string
@@ -33,7 +34,8 @@ export function SignPdf() {
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [signMode, setSignMode] = React.useState<SignMode>("draw")
   const [typedSignature, setTypedSignature] = React.useState("")
-  const [signatureUrl, setSignatureUrl] = React.useState<string | null>(null)
+  const [signatureBlob, setSignatureBlob] = React.useState<Blob | null>(null)
+  const [signaturePreview, setSignaturePreview] = React.useState<string | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = React.useState(false)
   const [hasDrawn, setHasDrawn] = React.useState(false)
@@ -54,12 +56,13 @@ export function SignPdf() {
 
   const removeFile = React.useCallback(() => {
     if (fileInfo?.resultUrl) URL.revokeObjectURL(fileInfo.resultUrl)
-    if (signatureUrl) URL.revokeObjectURL(signatureUrl)
+    if (signaturePreview) URL.revokeObjectURL(signaturePreview)
     setFileInfo(null)
-    setSignatureUrl(null)
+    setSignatureBlob(null)
+    setSignaturePreview(null)
     setProgress(0)
     setIsProcessing(false)
-  }, [fileInfo, signatureUrl])
+  }, [fileInfo, signaturePreview])
 
   React.useEffect(() => {
     if (signMode === "draw" && canvasRef.current) {
@@ -68,13 +71,25 @@ export function SignPdf() {
       canvas.height = 120
       const ctx = canvas.getContext("2d")
       if (ctx) {
-        ctx.strokeStyle = "#000"
+        ctx.fillStyle = "#ffffff"
+        ctx.fillRect(0, 0, 300, 120)
+        ctx.strokeStyle = "#000000"
         ctx.lineWidth = 2
         ctx.lineCap = "round"
         ctx.lineJoin = "round"
       }
     }
   }, [signMode])
+
+  const getCanvasPos = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    if ("touches" in e) {
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top }
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
 
   const startDrawing = React.useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current
@@ -83,9 +98,7 @@ export function SignPdf() {
     setHasDrawn(true)
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const rect = canvas.getBoundingClientRect()
-    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
-    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+    const { x, y } = getCanvasPos(e)
     ctx.beginPath()
     ctx.moveTo(x, y)
   }, [])
@@ -96,9 +109,7 @@ export function SignPdf() {
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const rect = canvas.getBoundingClientRect()
-    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
-    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+    const { x, y } = getCanvasPos(e)
     ctx.lineTo(x, y)
     ctx.stroke()
   }, [isDrawing])
@@ -112,7 +123,8 @@ export function SignPdf() {
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
     setHasDrawn(false)
   }, [])
 
@@ -122,13 +134,12 @@ export function SignPdf() {
         toast.error("Please draw your signature first")
         return
       }
-      const dataUrl = canvasRef.current?.toDataURL("image/png")
-      if (dataUrl) {
-        fetch(dataUrl).then((r) => r.blob()).then((blob) => {
-          const url = URL.createObjectURL(blob)
-          setSignatureUrl(url)
-        })
-      }
+      canvasRef.current?.toBlob((blob) => {
+        if (blob) {
+          setSignatureBlob(blob)
+          setSignaturePreview(URL.createObjectURL(blob))
+        }
+      }, "image/png")
     } else if (signMode === "type") {
       if (!typedSignature.trim()) {
         toast.error("Please type your signature")
@@ -139,19 +150,19 @@ export function SignPdf() {
       canvas.height = 120
       const ctx = canvas.getContext("2d")
       if (ctx) {
-        ctx.fillStyle = "#fff"
+        ctx.fillStyle = "#ffffff"
         ctx.fillRect(0, 0, 300, 120)
-        ctx.fillStyle = "#000"
+        ctx.fillStyle = "#000000"
         ctx.font = "36px 'Brush Script MT', cursive, serif"
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
         ctx.fillText(typedSignature, 150, 60)
         canvas.toBlob((blob) => {
           if (blob) {
-            const url = URL.createObjectURL(blob)
-            setSignatureUrl(url)
+            setSignatureBlob(blob)
+            setSignaturePreview(URL.createObjectURL(blob))
           }
-        })
+        }, "image/png")
       }
     }
   }, [signMode, hasDrawn, typedSignature])
@@ -159,34 +170,52 @@ export function SignPdf() {
   const handleSignatureUpload = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    const url = URL.createObjectURL(f)
-    setSignatureUrl(url)
+    setSignatureBlob(f)
+    setSignaturePreview(URL.createObjectURL(f))
   }, [])
 
   const process = React.useCallback(async () => {
-    if (!fileInfo) return
-    if (!signatureUrl) {
+    if (!fileInfo || !signatureBlob) {
       toast.error("Please create or upload a signature first")
       return
     }
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const sigBytes = await signatureBlob.arrayBuffer()
+      const sigImage = await pdf.embedPng(sigBytes).catch(() => pdf.embedJpg(sigBytes))
+      const pages = pdf.getPages()
+      const firstPage = pages[0]
+      const { width } = firstPage.getSize()
+      const dims = sigImage.scale(0.5)
+      firstPage.drawImage(sigImage, {
+        x: width - dims.width - 40,
+        y: 40,
+        width: dims.width,
+        height: dims.height,
       })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2500 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([fileInfo.file], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: fileInfo.file.size } : prev)
-    setIsProcessing(false)
-    toast.success("PDF signed successfully!")
-  }, [fileInfo, signatureUrl])
+      const pdfBytes = await pdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
+      toast.success("PDF signed successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to sign PDF. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [fileInfo, signatureBlob])
 
   const download = React.useCallback(() => {
     if (!fileInfo?.resultUrl) return
@@ -318,14 +347,14 @@ export function SignPdf() {
                 </div>
               )}
 
-              {signatureUrl && (
+              {signaturePreview && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4"
                 >
                   <p className="text-xs text-muted-foreground mb-2">Signature Preview</p>
-                  <img src={signatureUrl} alt="Signature" className="max-h-16 object-contain" />
+                  <img src={signaturePreview} alt="Signature" className="max-h-16 object-contain" />
                 </motion.div>
               )}
             </div>
@@ -368,7 +397,7 @@ export function SignPdf() {
           )}
 
           {!isProcessing && fileInfo.status !== "done" && (
-            <Button onClick={process} size="lg" className="w-full" icon={<Pen className="h-4 w-4" />} disabled={!signatureUrl}>
+            <Button onClick={process} size="lg" className="w-full" icon={<Pen className="h-4 w-4" />} disabled={!signatureBlob}>
               Sign PDF
             </Button>
           )}

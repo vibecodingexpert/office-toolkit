@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileVideoCamera, FileImage, Check, X, Video,
 } from "lucide-react"
+import { gifToMp4, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -18,23 +18,22 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const qualityOptions = [
-  { label: "Low", value: "low", desc: "Small file, faster" },
-  { label: "Medium", value: "medium", desc: "Balanced" },
-  { label: "High", value: "high", desc: "Best quality" },
-]
-
 export function GifToMp4() {
   const [file, setFile] = React.useState<File | null>(null)
   const [fileUrl, setFileUrl] = React.useState<string | null>(null)
   const [gifDimensions, setGifDimensions] = React.useState({ w: 0, h: 0 })
-  const [gifFrames, setGifFrames] = React.useState(0)
-  const [quality, setQuality] = React.useState("medium")
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [mp4Url, setMp4Url] = React.useState<string | null>(null)
   const [mp4Size, setMp4Size] = React.useState(0)
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -45,36 +44,28 @@ export function GifToMp4() {
     setFile(f)
     setFileUrl(url)
     setMp4Url(null)
-    const img = new window.Image()
+    const img = new window.Image(1, 1)
     img.onload = () => {
       setGifDimensions({ w: img.naturalWidth, h: img.naturalHeight })
     }
     img.src = url
-    setGifFrames(Math.floor(Math.random() * 60) + 10)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [fileUrl, mp4Url])
 
   const convert = React.useCallback(async () => {
     if (!file) { toast.error("Please upload a GIF file"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const qualityRatio = quality === "low" ? 0.3 : quality === "medium" ? 0.5 : 0.8
-    const blob = new Blob([await file.arrayBuffer()], { type: "video/mp4" })
-    const url = URL.createObjectURL(blob)
-    setMp4Size(Math.round(file.size * qualityRatio * 0.4))
-    setMp4Url(url)
+    try {
+      const blob = await gifToMp4(file)
+      const url = URL.createObjectURL(blob)
+      setMp4Size(blob.size)
+      setMp4Url(url)
+      toast.success("GIF converted to MP4 successfully!")
+    } catch {
+      toast.error("Failed to convert GIF to MP4")
+    }
     setIsProcessing(false)
-    toast.success("GIF converted to MP4 successfully!")
-  }, [file, quality])
+  }, [file])
 
   const download = React.useCallback(() => {
     if (!mp4Url) return
@@ -92,10 +83,27 @@ export function GifToMp4() {
     setFileUrl(null)
     setMp4Url(null)
     setGifDimensions({ w: 0, h: 0 })
-    setGifFrames(0)
-    setProgress(0)
     setIsProcessing(false)
   }, [fileUrl, mp4Url])
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+            <FileVideoCamera className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">GIF to MP4</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
@@ -131,7 +139,7 @@ export function GifToMp4() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatSize(file.size)} · {gifDimensions.w}x{gifDimensions.h} · ~{gifFrames} frames
+                  {formatSize(file.size)} · {gifDimensions.w}x{gifDimensions.h}
                 </p>
               </div>
               <button onClick={reset} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
@@ -146,34 +154,19 @@ export function GifToMp4() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Quality</label>
-            <div className="grid grid-cols-3 gap-2">
-              {qualityOptions.map((q) => (
-                <button
-                  key={q.value}
-                  onClick={() => setQuality(q.value)}
-                  className={cn(
-                    "rounded-xl border p-3 text-left transition-all",
-                    quality === q.value
-                      ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/20"
-                      : "border-border bg-card hover:border-emerald-500/30"
-                  )}
-                >
-                  <p className="text-sm font-medium text-foreground">{q.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{q.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {isProcessing && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                 Converting GIF to MP4...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
+                />
+              </div>
             </div>
           )}
 

@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, Gauge,
 } from "lucide-react"
+import { compressPDF } from "@/lib/utils/pdf-utils"
 
 interface FileInfo {
   id: string
   file: File
-  pages: number
   status: "idle" | "compressing" | "done" | "error"
   compressedSize: number
   compressedUrl: string | null
@@ -26,22 +26,10 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function simulatePages(size: number): number {
-  return Math.max(1, Math.floor(size / 50000))
-}
-
-const compressionLevels = [
-  { label: "Low (90%)", value: 0.9, desc: "Minimal compression, best quality" },
-  { label: "Medium (70%)", value: 0.7, desc: "Balanced compression and quality" },
-  { label: "High (50%)", value: 0.5, desc: "Good compression, reduced quality" },
-  { label: "Extreme (30%)", value: 0.3, desc: "Maximum compression, lowest quality" },
-] as const
-
 export function CompressPdf() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [compressionLevel, setCompressionLevel] = React.useState<number>(0.7)
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -49,7 +37,6 @@ export function CompressPdf() {
     setFileInfo({
       id: crypto.randomUUID(),
       file: f,
-      pages: simulatePages(f.size),
       status: "idle",
       compressedSize: 0,
       compressedUrl: null,
@@ -70,22 +57,25 @@ export function CompressPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "compressing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000))
-    clearInterval(interval)
-    setProgress(100)
-    const compressedSize = Math.round(fileInfo.file.size * compressionLevel * (0.85 + Math.random() * 0.15))
-    const blob = new Blob([fileInfo.file.slice(0, compressedSize)], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", compressedSize, compressedUrl: url } : prev)
-    setIsProcessing(false)
-    toast.success("PDF compressed successfully!")
-  }, [fileInfo, compressionLevel])
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const blob = await compressPDF(fileInfo.file)
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", compressedSize: blob.size, compressedUrl: url } : prev)
+      toast.success("PDF compressed successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to compress PDF. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [fileInfo])
 
   const download = React.useCallback(() => {
     if (!fileInfo?.compressedUrl) return
@@ -99,8 +89,6 @@ export function CompressPdf() {
     ? Math.round((1 - fileInfo.compressedSize / fileInfo.file.size) * 100)
     : 0
 
-  const selectedLevel = compressionLevels.find((l) => l.value === compressionLevel)
-
   return (
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
@@ -109,7 +97,7 @@ export function CompressPdf() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Compress PDF</h2>
-          <p className="text-sm text-muted-foreground">Reduce PDF file size while maintaining quality</p>
+          <p className="text-sm text-muted-foreground">Reduce PDF file size using object stream optimization</p>
         </div>
       </div>
 
@@ -142,7 +130,6 @@ export function CompressPdf() {
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
-                <span>Pages: {fileInfo.pages}</span>
                 {fileInfo.status === "done" && (
                   <>
                     <span>Compressed: {formatSize(fileInfo.compressedSize)}</span>
@@ -163,42 +150,11 @@ export function CompressPdf() {
             )}
           </motion.div>
 
-          {fileInfo.status === "idle" && !isProcessing && (
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground">Compression Level</label>
-              <div className="grid gap-2">
-                {compressionLevels.map((level) => (
-                  <button
-                    key={level.value}
-                    onClick={() => setCompressionLevel(level.value)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all",
-                      compressionLevel === level.value
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                        : "border-border bg-background hover:border-primary/50"
-                    )}
-                  >
-                    <div className={cn(
-                      "h-4 w-4 rounded-full border-2 flex items-center justify-center",
-                      compressionLevel === level.value ? "border-primary" : "border-muted-foreground"
-                    )}>
-                      {compressionLevel === level.value && <div className="h-2 w-2 rounded-full bg-primary" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{level.label}</p>
-                      <p className="text-xs text-muted-foreground">{level.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {isProcessing && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                Compressing PDF ({selectedLevel?.label})...
+                Compressing PDF...
               </div>
               <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
             </div>

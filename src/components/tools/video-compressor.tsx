@@ -4,12 +4,12 @@ import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, FileVideoCamera, Check, X, FileDown, Sliders, Video,
+  Upload, Download, FileDown, Video, Check, X, Sliders,
 } from "lucide-react"
+import { compressVideo, getFFmpeg } from "@/lib/utils/media-utils"
 
 interface FileItem {
   id: string
@@ -18,7 +18,6 @@ interface FileItem {
   originalSize: number
   compressedSize: number
   compressedUrl: string | null
-  duration: number
   status: "pending" | "compressing" | "done" | "error"
 }
 
@@ -29,23 +28,17 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, "0")}`
-}
-
-const qualityPresets = [
-  { label: "Low", value: "low", desc: "Small file size", ratio: 0.3 },
-  { label: "Medium", value: "medium", desc: "Balanced", ratio: 0.5 },
-  { label: "High", value: "high", desc: "Good quality", ratio: 0.7 },
-  { label: "Lossless", value: "lossless", desc: "Best quality", ratio: 0.95 },
-]
-
 export function VideoCompressor() {
   const [files, setFiles] = React.useState<FileItem[]>([])
-  const [quality, setQuality] = React.useState("medium")
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFiles = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files
@@ -57,7 +50,6 @@ export function VideoCompressor() {
       originalSize: f.size,
       compressedSize: 0,
       compressedUrl: null,
-      duration: Math.floor(Math.random() * 180) + 10,
       status: "pending" as const,
     }))
     setFiles((prev) => [...prev, ...newItems])
@@ -88,17 +80,19 @@ export function VideoCompressor() {
     if (!pending.length) { toast.error("No files to compress"); return }
     for (const item of pending) {
       setFiles((prev) => prev.map((f) => f.id === item.id ? { ...f, status: "compressing" } : f))
-      await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-      const qualityRatio = qualityPresets.find((q) => q.value === quality)?.ratio ?? 0.5
-      const compressedSize = Math.round(item.file.size * qualityRatio * (0.8 + Math.random() * 0.2))
-      const blob = new Blob([await item.file.arrayBuffer()], { type: "video/mp4" })
-      const url = URL.createObjectURL(blob)
-      setFiles((prev) => prev.map((f) =>
-        f.id === item.id ? { ...f, compressedSize, compressedUrl: url, status: "done" } : f
-      ))
+      try {
+        const blob = await compressVideo(item.file)
+        const url = URL.createObjectURL(blob)
+        setFiles((prev) => prev.map((f) =>
+          f.id === item.id ? { ...f, compressedSize: blob.size, compressedUrl: url, status: "done" } : f
+        ))
+      } catch {
+        setFiles((prev) => prev.map((f) => f.id === item.id ? { ...f, status: "error" } : f))
+        toast.error(`Failed to compress ${item.file.name}`)
+      }
     }
     toast.success(`Compressed ${pending.length} file(s)`)
-  }, [files, quality])
+  }, [files])
 
   const downloadFile = React.useCallback((item: FileItem) => {
     if (!item.compressedUrl) return
@@ -116,6 +110,25 @@ export function VideoCompressor() {
     return { original, compressed, count: done.length }
   }, [files])
 
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+            <FileDown className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Video Compressor</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <Card className="space-y-6 p-6">
       <div className="flex items-center gap-3">
@@ -129,27 +142,6 @@ export function VideoCompressor() {
       </div>
 
       <input ref={fileInputRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" multiple onChange={handleFiles} className="hidden" />
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Quality</label>
-        <div className="grid grid-cols-4 gap-2">
-          {qualityPresets.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setQuality(p.value)}
-              className={cn(
-                "rounded-xl border p-3 text-left transition-all",
-                quality === p.value
-                  ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/20"
-                  : "border-border bg-card hover:border-emerald-500/30"
-              )}
-            >
-              <p className="text-sm font-medium text-foreground">{p.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{p.desc}</p>
-            </button>
-          ))}
-        </div>
-      </div>
 
       {files.length === 0 ? (
         <button onClick={() => fileInputRef.current?.click()} className="flex w-full cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-border bg-background p-8 text-center transition-all hover:border-emerald-500/50 hover:bg-emerald-500/[0.02]">
@@ -197,7 +189,6 @@ export function VideoCompressor() {
                     <p className="text-sm font-medium text-foreground truncate">{item.file.name}</p>
                     <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                       <span>Size: {formatSize(item.originalSize)}</span>
-                      <span>Duration: {formatDuration(item.duration)}</span>
                       {item.status === "done" && item.compressedSize > 0 && (
                         <>
                           <span>Compressed: {formatSize(item.compressedSize)}</span>
@@ -207,20 +198,12 @@ export function VideoCompressor() {
                         </>
                       )}
                     </div>
-                    {item.status === "pending" && (
-                      <div className="mt-2">
-                        <p className="text-xs text-muted-foreground">
-                          Est. compressed: ~{formatSize(Math.round(item.file.size * (qualityPresets.find((q) => q.value === quality)?.ratio ?? 0.5)))}
-                        </p>
-                      </div>
-                    )}
                     {item.status === "compressing" && (
                       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <motion.div
-                          initial={{ width: "0%" }}
-                          animate={{ width: "100%" }}
-                          transition={{ duration: 3, ease: "easeInOut" }}
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
+                          animate={{ x: ["-100%", "100%"] }}
+                          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                          className="h-full w-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
                         />
                       </div>
                     )}

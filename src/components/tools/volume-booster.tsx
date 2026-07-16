@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, Volume2, Music, Check, X, Play, Pause,
+  Upload, Download, Volume2, Music, Check, X,
 } from "lucide-react"
+import { changeVolume, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -22,13 +22,18 @@ export function VolumeBooster() {
   const [file, setFile] = React.useState<File | null>(null)
   const [fileUrl, setFileUrl] = React.useState<string | null>(null)
   const [boostLevel, setBoostLevel] = React.useState(1.5)
-  const [isPlaying, setIsPlaying] = React.useState(false)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [boostedUrl, setBoostedUrl] = React.useState<string | null>(null)
   const [boostedSize, setBoostedSize] = React.useState(0)
-  const audioRef = React.useRef<HTMLAudioElement>(null)
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -38,54 +43,22 @@ export function VolumeBooster() {
     setFile(f)
     setFileUrl(URL.createObjectURL(f))
     setBoostedUrl(null)
-    setIsPlaying(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [fileUrl, boostedUrl])
-
-  const togglePlayback = React.useCallback(() => {
-    if (!audioRef.current) return
-    if (isPlaying) {
-      audioRef.current.pause()
-    } else {
-      audioRef.current.volume = Math.min(boostLevel, 1)
-      audioRef.current.play()
-    }
-    setIsPlaying(!isPlaying)
-  }, [isPlaying, boostLevel])
-
-  React.useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = Math.min(boostLevel, 1)
-    }
-  }, [boostLevel])
-
-  React.useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    const handleEnd = () => setIsPlaying(false)
-    audio.addEventListener("ended", handleEnd)
-    return () => audio.removeEventListener("ended", handleEnd)
-  }, [])
 
   const boost = React.useCallback(async () => {
     if (!file) { toast.error("Please upload an audio file"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([await file.arrayBuffer()], { type: file.type })
-    const url = URL.createObjectURL(blob)
-    setBoostedSize(Math.round(file.size * 1.02))
-    setBoostedUrl(url)
+    try {
+      const blob = await changeVolume(file, boostLevel)
+      const url = URL.createObjectURL(blob)
+      setBoostedSize(blob.size)
+      setBoostedUrl(url)
+      toast.success(`Volume boosted ${boostLevel}x!`)
+    } catch {
+      toast.error("Failed to boost volume")
+    }
     setIsProcessing(false)
-    toast.success(`Volume boosted ${boostLevel}x!`)
   }, [file, boostLevel])
 
   const download = React.useCallback(() => {
@@ -105,12 +78,29 @@ export function VolumeBooster() {
     setFileUrl(null)
     setBoostedUrl(null)
     setBoostLevel(1.5)
-    setIsPlaying(false)
-    setProgress(0)
     setIsProcessing(false)
   }, [fileUrl, boostedUrl])
 
   const boostLabels = ["1x", "1.5x", "2x", "3x", "4x", "5x"]
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
+            <Volume2 className="h-5 w-5 text-pink-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Volume Booster</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-pink-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
@@ -153,25 +143,6 @@ export function VolumeBooster() {
             </div>
           )}
 
-          {fileUrl && (
-            <>
-              <audio ref={audioRef} src={fileUrl} className="hidden" />
-              <div className="flex items-center gap-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={togglePlayback}
-                  icon={isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                >
-                  {isPlaying ? "Pause" : "Preview"}
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  Preview at {boostLevel}x volume
-                </span>
-              </div>
-            </>
-          )}
-
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium text-foreground">Boost Level</label>
@@ -196,7 +167,13 @@ export function VolumeBooster() {
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-pink-500" />
                 Boosting volume ({boostLevel}x)...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-pink-500 to-pink-300"
+                />
+              </div>
             </div>
           )}
 

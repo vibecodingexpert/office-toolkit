@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, Scissors, Music, Check, X, Play,
 } from "lucide-react"
+import { cutAudio, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -31,46 +31,17 @@ export function AudioCutter() {
   const [startTime, setStartTime] = React.useState(0)
   const [endTime, setEndTime] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [cutUrl, setCutUrl] = React.useState<string | null>(null)
   const [cutSize, setCutSize] = React.useState(0)
-  const [waveform, setWaveform] = React.useState<number[]>([])
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const canvasRef = React.useRef<HTMLCanvasElement>(null)
-
-  const generateWaveform = React.useCallback(() => {
-    const bars = 60
-    const data = Array.from({ length: bars }, () => Math.random() * 0.8 + 0.2)
-    setWaveform(data)
-  }, [])
 
   React.useEffect(() => {
-    if (waveform.length > 0 && canvasRef.current) {
-      const canvas = canvasRef.current
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      const dpr = window.devicePixelRatio || 1
-      const rect = canvas.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
-      ctx.scale(dpr, dpr)
-      ctx.clearRect(0, 0, rect.width, rect.height)
-      const barW = rect.width / waveform.length - 2
-      const selectedStart = startTime / (duration || 1)
-      const selectedEnd = endTime / (duration || 1)
-      waveform.forEach((val, i) => {
-        const x = i * (barW + 2)
-        const h = val * rect.height
-        const isSelected = i / waveform.length >= selectedStart && i / waveform.length <= selectedEnd
-        ctx.fillStyle = isSelected ? "#ec4899" : "hsl(var(--muted-foreground))"
-        ctx.globalAlpha = isSelected ? 0.8 : 0.3
-        ctx.beginPath()
-        ctx.roundRect(x, (rect.height - h) / 2, barW, h, 2)
-        ctx.fill()
-      })
-      ctx.globalAlpha = 1
-    }
-  }, [waveform, startTime, endTime, duration])
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -87,33 +58,25 @@ export function AudioCutter() {
     audio.onloadedmetadata = () => {
       setDuration(audio.duration)
       setEndTime(audio.duration)
-      generateWaveform()
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
-  }, [fileUrl, cutUrl, generateWaveform])
+  }, [fileUrl, cutUrl])
 
   const cut = React.useCallback(async () => {
     if (!file) { toast.error("Please upload an audio file"); return }
     if (startTime >= endTime) { toast.error("Start time must be before end time"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([await file.arrayBuffer()], { type: file.type })
-    const url = URL.createObjectURL(blob)
-    const cutRatio = (endTime - startTime) / (duration || 1)
-    setCutSize(Math.round(file.size * cutRatio))
-    setCutUrl(url)
+    try {
+      const blob = await cutAudio(file, startTime, endTime - startTime)
+      const url = URL.createObjectURL(blob)
+      setCutSize(blob.size)
+      setCutUrl(url)
+      toast.success("Audio cut successfully!")
+    } catch {
+      toast.error("Failed to cut audio")
+    }
     setIsProcessing(false)
-    toast.success("Audio cut successfully!")
-  }, [file, startTime, endTime, duration])
+  }, [file, startTime, endTime])
 
   const download = React.useCallback(() => {
     if (!cutUrl) return
@@ -133,10 +96,27 @@ export function AudioCutter() {
     setStartTime(0)
     setEndTime(0)
     setDuration(0)
-    setWaveform([])
-    setProgress(0)
     setIsProcessing(false)
   }, [fileUrl, cutUrl])
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
+            <Scissors className="h-5 w-5 text-pink-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Audio Cutter</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-pink-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
@@ -146,7 +126,7 @@ export function AudioCutter() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Audio Cutter</h2>
-          <p className="text-sm text-muted-foreground">Cut and trim audio files with waveform preview</p>
+          <p className="text-sm text-muted-foreground">Cut and trim audio files</p>
         </div>
       </div>
 
@@ -176,12 +156,6 @@ export function AudioCutter() {
               <button onClick={reset} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                 <X className="h-4 w-4" />
               </button>
-            </div>
-          )}
-
-          {waveform.length > 0 && (
-            <div className="overflow-hidden rounded-xl border border-border bg-card p-1">
-              <canvas ref={canvasRef} className="h-24 w-full" />
             </div>
           )}
 
@@ -218,7 +192,13 @@ export function AudioCutter() {
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-pink-500" />
                 Cutting audio...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-pink-500 to-pink-300"
+                />
+              </div>
             </div>
           )}
 

@@ -62,46 +62,102 @@ export function ExtractImagesPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 8
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2500 + Math.random() * 2500))
-    clearInterval(interval)
-    setProgress(100)
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 8, 85))
+    }, 300)
 
-    const count = Math.floor(Math.random() * 5) + 3
-    const extracted: ExtractedImage[] = []
-    for (let i = 0; i < count; i++) {
-      const canvas = document.createElement("canvas")
-      canvas.width = 200
-      canvas.height = 150
-      const ctx = canvas.getContext("2d")
-      if (ctx) {
-        ctx.fillStyle = ["#6366f1", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"][i % 5]
-        ctx.fillRect(0, 0, 200, 150)
-        ctx.fillStyle = "#fff"
-        ctx.font = "14px sans-serif"
-        ctx.textAlign = "center"
-        ctx.fillText(`Image ${i + 1}`, 100, 80)
+    try {
+      const { PDFDocument } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const pages = pdf.getPages()
+      const extracted: ExtractedImage[] = []
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i]
+        const { width, height } = page.getSize()
+        const resources = (page as any).node?.Resources
+        if (!resources) continue
+
+        const xObjects = resources.get("XObject")
+        if (!xObjects) continue
+
+        const keys = xObjects.keys()
+        for (const key of keys) {
+          const xObject = xObjects.get(key)
+          const subtype = xObject.get("Subtype")?.name
+          if (subtype !== "Image") continue
+
+          const filter = xObject.get("Filter")?.name
+          const width2 = xObject.get("Width")?.number
+          const height2 = xObject.get("Height")?.number
+          const stream = xObject.getStream?.()
+          if (!stream) continue
+
+          let blob: Blob
+          let ext: string
+          if (filter === "DCTDecode") {
+            blob = new Blob([stream], { type: "image/jpeg" })
+            ext = "jpg"
+          } else {
+            const rawBytes = new Uint8Array(stream)
+            const rgba = new Uint8Array(width2 * height2 * 4)
+            for (let j = 0; j < width2 * height2; j++) {
+              rgba[j * 4] = rawBytes[j] || 0
+              rgba[j * 4 + 1] = rawBytes[j] || 0
+              rgba[j * 4 + 2] = rawBytes[j] || 0
+              rgba[j * 4 + 3] = 255
+            }
+            const canvas = document.createElement("canvas")
+            canvas.width = width2
+            canvas.height = height2
+            const ctx = canvas.getContext("2d")
+            if (!ctx) continue
+            const imageData = ctx.createImageData(width2, height2)
+            imageData.data.set(rgba)
+            ctx.putImageData(imageData, 0, 0)
+            blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b || new Blob([])), "image/png")!)
+            ext = "png"
+          }
+
+          const url = URL.createObjectURL(blob)
+          extracted.push({
+            id: crypto.randomUUID(),
+            url,
+            name: `image_p${i + 1}_${key}_${width2}x${height2}.${ext}`,
+            size: blob.size,
+          })
+        }
+
+        setProgress(Math.min(85, Math.round(((i + 1) / pages.length) * 85)))
       }
-      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"))
-      if (blob) {
-        const url = URL.createObjectURL(blob)
-        extracted.push({ id: crypto.randomUUID(), url, name: `image_${i + 1}.png`, size: blob.size })
+
+      clearInterval(progressInterval)
+      setImages(extracted)
+
+      if (extracted.length > 0) {
+        const { default: JSZip } = await import("jszip")
+        const zip = new JSZip()
+        for (const img of extracted) {
+          const resp = await fetch(img.url)
+          const blob = await resp.blob()
+          zip.file(img.name, blob)
+        }
+        const zipBlob = await zip.generateAsync({ type: "blob" })
+        const zipUrl_ = URL.createObjectURL(zipBlob)
+        setZipUrl(zipUrl_)
       }
+
+      setProgress(100)
+      setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+      toast.success(`Extracted ${extracted.length} images from PDF!`)
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to extract images. The PDF may contain no embedded images.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
     }
-    setImages(extracted)
-
-    const zipBlob = new Blob([fileInfo.file], { type: "application/zip" })
-    const zip = URL.createObjectURL(zipBlob)
-    setZipUrl(zip)
-
-    setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
-    setIsProcessing(false)
-    toast.success(`Extracted ${count} images from PDF!`)
   }, [fileInfo])
 
   const downloadAll = React.useCallback(() => {
@@ -215,6 +271,19 @@ export function ExtractImagesPdf() {
                 ))}
               </div>
               <Button variant="ghost" size="sm" onClick={removeFile} className="w-full">
+                Process another file
+              </Button>
+            </motion.div>
+          )}
+
+          {fileInfo.status === "done" && images.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-8"
+            >
+              <p className="text-sm text-muted-foreground">No embedded images found in this PDF.</p>
+              <Button variant="ghost" size="sm" onClick={removeFile} className="mt-4">
                 Process another file
               </Button>
             </motion.div>

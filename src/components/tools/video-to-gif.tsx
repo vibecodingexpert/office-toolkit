@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, FileImage, Video, Check, X, Play,
+  Upload, Download, FileImage, Video, Check, X,
 } from "lucide-react"
+import { videoToGif, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -36,23 +36,27 @@ export function VideoToGif() {
   const [fps, setFps] = React.useState(10)
   const [width, setWidth] = React.useState(480)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [gifUrl, setGifUrl] = React.useState<string | null>(null)
   const [gifSize, setGifSize] = React.useState(0)
-  const [framePreviews, setFramePreviews] = React.useState<string[]>([])
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
     if (fileUrl) URL.revokeObjectURL(fileUrl)
     if (gifUrl) URL.revokeObjectURL(gifUrl)
-    framePreviews.forEach((p) => URL.revokeObjectURL(p))
     const url = URL.createObjectURL(f)
     setFile(f)
     setFileUrl(url)
     setGifUrl(null)
-    setFramePreviews([])
     setStartTime(0)
     setEndTime(0)
     setDuration(0)
@@ -64,60 +68,23 @@ export function VideoToGif() {
       setEndTime(Math.min(video.duration, 10))
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
-  }, [fileUrl, gifUrl, framePreviews])
-
-  const generateFramePreviews = React.useCallback(async () => {
-    if (!fileUrl) return
-    const previews: string[] = []
-    const canvas = document.createElement("canvas")
-    canvas.width = width
-    canvas.height = Math.round(width * 0.5625)
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    const video = document.createElement("video")
-    video.src = fileUrl
-    await video.play()
-    const totalFrames = 4
-    for (let i = 0; i < totalFrames; i++) {
-      const time = startTime + ((endTime - startTime) / (totalFrames + 1)) * (i + 1)
-      video.currentTime = time
-      await new Promise((r) => { video.onseeked = r })
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      previews.push(canvas.toDataURL("image/png"))
-    }
-    video.pause()
-    video.remove()
-    setFramePreviews(previews)
-  }, [fileUrl, startTime, endTime, width])
-
-  React.useEffect(() => {
-    if (file && duration > 0) {
-      generateFramePreviews()
-    }
-  }, [file, duration, startTime, endTime, fps, width, generateFramePreviews])
+  }, [fileUrl, gifUrl])
 
   const convert = React.useCallback(async () => {
     if (!file) { toast.error("Please upload a video"); return }
     if (startTime >= endTime) { toast.error("Start time must be before end time"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 8
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 3000 + Math.random() * 3000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([await file.arrayBuffer()], { type: "image/gif" })
-    const url = URL.createObjectURL(blob)
-    const gifRatio = ((endTime - startTime) / duration) * (fps / 24) * (width / 1024)
-    setGifSize(Math.round(file.size * gifRatio * 0.3))
-    setGifUrl(url)
+    try {
+      const blob = await videoToGif(file, startTime, endTime - startTime)
+      const url = URL.createObjectURL(blob)
+      setGifSize(blob.size)
+      setGifUrl(url)
+      toast.success("GIF created successfully!")
+    } catch {
+      toast.error("Failed to create GIF")
+    }
     setIsProcessing(false)
-    toast.success("GIF created successfully!")
-  }, [file, duration, startTime, endTime, fps, width])
+  }, [file, startTime, endTime])
 
   const download = React.useCallback(() => {
     if (!gifUrl) return
@@ -131,17 +98,33 @@ export function VideoToGif() {
   const reset = React.useCallback(() => {
     if (fileUrl) URL.revokeObjectURL(fileUrl)
     if (gifUrl) URL.revokeObjectURL(gifUrl)
-    framePreviews.forEach((p) => URL.revokeObjectURL(p))
     setFile(null)
     setFileUrl(null)
     setGifUrl(null)
-    setFramePreviews([])
     setStartTime(0)
     setEndTime(0)
     setDuration(0)
-    setProgress(0)
     setIsProcessing(false)
-  }, [fileUrl, gifUrl, framePreviews])
+  }, [fileUrl, gifUrl])
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+            <FileImage className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Video to GIF</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
@@ -201,19 +184,6 @@ export function VideoToGif() {
             </div>
           </div>
 
-          {framePreviews.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Frame Preview</label>
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {framePreviews.map((src, i) => (
-                  <div key={i} className="shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                    <img src={src} alt={`Frame ${i + 1}`} className="h-20 w-auto object-cover" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">FPS (Frames Per Second)</label>
@@ -261,7 +231,13 @@ export function VideoToGif() {
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                 Converting to GIF ({fps} fps, {width}px)...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
+                />
+              </div>
             </div>
           )}
 

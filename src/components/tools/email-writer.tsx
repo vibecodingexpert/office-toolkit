@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
@@ -15,12 +16,15 @@ import {
   RefreshCw,
   User,
   Briefcase,
+  Building2,
+  Lightbulb,
 } from "lucide-react"
 
 const TONES = [
   { value: "formal", label: "Formal", desc: "Professional and structured" },
+  { value: "semi-formal", label: "Semi-Formal", desc: "Balanced professional" },
   { value: "casual", label: "Casual", desc: "Relaxed and friendly" },
-  { value: "friendly", label: "Friendly", desc: "Warm and approachable" },
+  { value: "warm", label: "Warm", desc: "Friendly and approachable" },
 ] as const
 
 const EMAIL_TYPES = [
@@ -34,7 +38,202 @@ const EMAIL_TYPES = [
   "Congratulations",
   "Recommendation",
   "Status Update",
+  "Cold Email",
+  "Professional",
 ] as const
+
+const SUBJECT_TEMPLATES: Record<string, (topic: string) => string> = {
+  Introduction: (t) => `Introduction: ${t} — Let's Connect`,
+  "Follow-up": (t) => `Following Up: ${t}`,
+  "Thank You": (t) => `Thank You: ${t}`,
+  "Meeting Request": (t) => `Meeting Request: Discuss ${t}`,
+  Proposal: (t) => `Proposal: ${t} — A New Opportunity`,
+  Feedback: (t) => `Feedback on ${t}`,
+  Apology: (t) => `Apology Regarding ${t}`,
+  Congratulations: (t) => `Congratulations on ${t}!`,
+  Recommendation: (t) => `Recommendation: ${t}`,
+  "Status Update": (t) => `Status Update: ${t}`,
+  "Cold Email": (t) => `Quick question about ${t}`,
+  Professional: (t) => `Professional Inquiry: ${t}`,
+}
+
+const TEMPLATE_LIBRARY: Record<string, (greeting: string, closing: string, name: string, role: string, topic: string) => { subject: string; body: string }> = {
+  Introduction: (greeting, closing, name, role, topic) => ({
+    subject: `Introduction: ${topic}`,
+    body: `${greeting} ${name},
+
+I hope this message finds you well. I am writing to introduce myself regarding ${topic}.
+
+With my background as ${role || "a professional in this field"}, I believe there could be valuable opportunities for us to collaborate. I have been following your work with great interest.
+
+I would welcome the opportunity to connect and explore how we might work together. Please let me know if you have any availability.
+
+${closing},
+[Your Name]`,
+  }),
+  "Follow-up": (greeting, closing, name, role, topic) => ({
+    subject: `Following up: ${topic}`,
+    body: `${greeting} ${name},
+
+I hope you're doing well. I'm following up on our previous conversation regarding ${topic}.
+
+I wanted to check if you've had a chance to consider the points we discussed. I remain enthusiastic about the potential opportunities here and would be happy to provide any additional information.
+
+Please feel free to reach out if you have any questions.
+
+${closing},
+[Your Name]`,
+  }),
+  "Thank You": (greeting, closing, name, role, topic) => ({
+    subject: `Thank You: ${topic}`,
+    body: `${greeting} ${name},
+
+I wanted to express my sincere gratitude for your support regarding ${topic}.
+
+Your guidance and expertise as ${role || "a valued colleague"} have been invaluable. I truly appreciate the time and effort you've invested.
+
+I look forward to continuing our work together.
+
+${closing},
+[Your Name]`,
+  }),
+  "Meeting Request": (greeting, closing, name, role, topic) => ({
+    subject: `Meeting Request: ${topic}`,
+    body: `${greeting} ${name},
+
+I would like to request a meeting to discuss ${topic}.
+
+Given your expertise as ${role || "a key stakeholder"}, your input would be extremely valuable.
+
+Would you be available for a 30-minute meeting next week? Please let me know what times work best.
+
+${closing},
+[Your Name]`,
+  }),
+  Proposal: (greeting, closing, name, role, topic) => ({
+    subject: `Proposal: ${topic}`,
+    body: `${greeting} ${name},
+
+I am pleased to present this proposal regarding ${topic}. As ${role || "a professional in this area"}, I have carefully considered the requirements and challenges involved.
+
+**Key Highlights:**
+- Comprehensive approach addressing all critical areas
+- Cost-effective solution with measurable outcomes
+- Implementation timeline designed for minimal disruption
+
+I am confident this proposal provides a strong foundation for achieving our shared objectives.
+
+${closing},
+[Your Name]`,
+  }),
+  Feedback: (greeting, closing, name, role, topic) => ({
+    subject: `Feedback: ${topic}`,
+    body: `${greeting} ${name},
+
+I wanted to share some thoughtful feedback regarding ${topic}. As ${role || "a team member"}, I believe open communication is essential for growth.
+
+**What's working well:**
+- The approach has been thorough and well-organized
+- Outcomes have exceeded initial expectations
+
+**Areas for consideration:**
+- Opportunities to streamline certain processes
+- Additional collaboration could enhance results
+
+I hope this feedback is received in the spirit of continuous improvement.
+
+${closing},
+[Your Name]`,
+  }),
+  Apology: (greeting, closing, name, role, topic) => ({
+    subject: `Apology Regarding ${topic}`,
+    body: `${greeting} ${name},
+
+I am writing to sincerely apologize for the situation regarding ${topic}. As ${role || "the responsible party"}, I take full responsibility.
+
+I understand the impact this has had and want to assure you that steps are being taken to address the matter.
+
+I value our relationship and hope we can move forward. Please let me know if there is anything else I can do.
+
+${closing},
+[Your Name]`,
+  }),
+  Congratulations: (greeting, closing, name, role, topic) => ({
+    subject: `Congratulations on ${topic}!`,
+    body: `${greeting} ${name},
+
+I was delighted to hear about ${topic}. This is a remarkable achievement, and you should be incredibly proud.
+
+Your dedication and expertise as ${role || "a professional"} have clearly paid off. This recognition is well-deserved.
+
+Wishing you continued success in all your future endeavors!
+
+${closing},
+[Your Name]`,
+  }),
+  Recommendation: (greeting, closing, name, role, topic) => ({
+    subject: `Recommendation: ${topic}`,
+    body: `${greeting} ${name},
+
+I am writing to share a recommendation regarding ${topic}. Based on my experience as ${role || "a professional in this field"}, I believe this could be highly beneficial.
+
+**Why I recommend this:**
+- Proven track record of success
+- Strong alignment with our objectives
+- Excellent potential for positive impact
+
+I would be happy to discuss this recommendation in more detail.
+
+${closing},
+[Your Name]`,
+  }),
+  "Status Update": (greeting, closing, name, role, topic) => ({
+    subject: `Status Update: ${topic}`,
+    body: `${greeting} ${name},
+
+I'm writing to provide a status update on ${topic}. I wanted to ensure you're fully informed of our progress.
+
+**Current Status:**
+- Project is on track and progressing well
+- Key milestones have been achieved
+
+**Next Steps:**
+- Complete remaining deliverables
+- Conduct final review and quality check
+- Prepare handover documentation
+
+I will continue to keep you updated as we move forward.
+
+${closing},
+[Your Name]`,
+  }),
+  "Cold Email": (greeting, closing, name, role, topic) => ({
+    subject: `Quick question about ${topic}`,
+    body: `${greeting} ${name},
+
+I hope you don't mind me reaching out. My name is [Your Name] and I've been following your work in ${topic} with great interest.
+
+I'm reaching out because I believe there could be a valuable opportunity for us to collaborate. I'd love to share some ideas that could be mutually beneficial.
+
+Would you be open to a brief 15-minute call next week to explore this further?
+
+${closing},
+[Your Name]`,
+  }),
+  Professional: (greeting, closing, name, role, topic) => ({
+    subject: `Professional Inquiry: ${topic}`,
+    body: `${greeting} ${name},
+
+I hope this message finds you well. I am writing to discuss ${topic} and explore potential opportunities for collaboration.
+
+As ${role || "a professional in this industry"}, I have developed significant expertise in this area and believe there could be meaningful synergies between our work.
+
+I would welcome the opportunity to discuss this further and explore how we might create value together.
+
+${closing},
+[Your Name]`,
+  }),
+}
 
 function generateEmail(
   topic: string,
@@ -42,189 +241,31 @@ function generateEmail(
   recipientRole: string,
   tone: string,
   type: string
-): { subject: string; body: string } {
-  const toneGreetings: Record<string, string> = {
-    formal: "Dear",
-    casual: "Hi",
-    friendly: "Hello",
+): { subject: string; body: string; subjectLine: string } {
+  const toneData: Record<string, { greeting: string; closings: string[] }> = {
+    formal: { greeting: "Dear", closings: ["Best regards", "Sincerely", "Yours faithfully", "With gratitude"] },
+    "semi-formal": { greeting: "Dear", closings: ["Best regards", "Kind regards", "Warmly", "All the best"] },
+    casual: { greeting: "Hi", closings: ["Best", "Cheers", "Talk soon", "Thanks"] },
+    warm: { greeting: "Hello", closings: ["Warmly", "With appreciation", "All the best", "Take care"] },
   }
 
-  const toneClosings: Record<string, string[]> = {
-    formal: ["Best regards", "Sincerely", "Yours faithfully", "With gratitude"],
-    casual: ["Best", "Cheers", "Talk soon", "Thanks"],
-    friendly: ["Warmly", "With appreciation", "All the best", "Take care"],
-  }
+  const data = toneData[tone] || toneData.formal
+  const greeting = `${data.greeting}`
+  const closing = data.closings[Math.floor(Math.random() * data.closings.length)]
 
-  const typeTemplates: Record<string, (greeting: string, closing: string) => { subject: string; body: string }> = {
-    Introduction: (greeting, closing) => ({
-      subject: `Introduction: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I hope this message finds you well. I am writing to introduce myself and share some information about ${topic}.
-
-With my background as ${recipientRole}, I believe there could be valuable opportunities for us to collaborate. I have been following your work with great interest and am impressed by the impact you've made.
-
-I would welcome the opportunity to connect and explore how we might work together. Please let me know if you have any availability in the coming weeks for a brief conversation.
-
-${closing},
-[Your Name]`,
-    }),
-    "Follow-up": (greeting, closing) => ({
-      subject: `Following up: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I hope you're doing well. I'm writing to follow up on our previous conversation regarding ${topic}.
-
-I wanted to check if you've had a chance to consider the points we discussed. I remain enthusiastic about the potential opportunities here and would be happy to provide any additional information that might be helpful.
-
-Please feel free to reach out if you have any questions or would like to discuss further.
-
-${closing},
-[Your Name]`,
-    }),
-    "Thank You": (greeting, closing) => ({
-      subject: `Thank You: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I wanted to take a moment to express my sincere gratitude for your support regarding ${topic}.
-
-Your guidance and expertise as ${recipientRole} have been invaluable, and I truly appreciate the time and effort you've invested. It has made a significant difference, and I am grateful for your contributions.
-
-I look forward to continuing our work together and achieving great results.
-
-${closing},
-[Your Name]`,
-    }),
-    "Meeting Request": (greeting, closing) => ({
-      subject: `Meeting Request: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I hope this message finds you well. I would like to request a meeting to discuss ${topic}.
-
-Given your expertise as ${recipientRole}, I believe your input would be extremely valuable. I have outlined a few key areas I'd like to cover:
-
-1. Current status and challenges
-2. Potential opportunities and solutions
-3. Next steps and action items
-
-Would you be available for a 30-minute meeting sometime next week? Please let me know what times work best for your schedule.
-
-${closing},
-[Your Name]`,
-    }),
-    Proposal: (greeting, closing) => ({
-      subject: `Proposal: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I am pleased to present this proposal regarding ${topic}. As ${recipientRole}, I have carefully considered the requirements and challenges involved.
-
-**Key Highlights:**
-- Comprehensive approach addressing all critical areas
-- Cost-effective solution with measurable outcomes
-- Implementation timeline designed for minimal disruption
-
-I am confident that this proposal provides a strong foundation for achieving our shared objectives. I would welcome the opportunity to walk through the details with you at your convenience.
-
-${closing},
-[Your Name]`,
-    }),
-    Feedback: (greeting, closing) => ({
-      subject: `Feedback: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I wanted to share some thoughtful feedback regarding ${topic}. As ${recipientRole}, I believe open and constructive communication is essential for growth.
-
-**What's working well:**
-- The approach has been thorough and well-organized
-- The outcomes have exceeded initial expectations
-
-**Areas for consideration:**
-- There may be opportunities to streamline certain processes
-- Additional collaboration could enhance the results
-
-I hope this feedback is received in the spirit of continuous improvement that it's intended.
-
-${closing},
-[Your Name]`,
-    }),
-    Apology: (greeting, closing) => ({
-      subject: `Apology Regarding ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I am writing to sincerely apologize for the recent situation regarding ${topic}. As ${recipientRole}, I take full responsibility for any inconvenience this may have caused.
-
-I understand the impact this has had and want to assure you that steps are being taken to address the matter and prevent similar issues in the future.
-
-I value our relationship and hope we can move forward. Please let me know if there is anything else I can do to make things right.
-
-${closing},
-[Your Name]`,
-    }),
-    Congratulations: (greeting, closing) => ({
-      subject: `Congratulations on ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I was absolutely delighted to hear about ${topic}. This is a remarkable achievement, and you should be incredibly proud of what you've accomplished.
-
-Your dedication and expertise as ${recipientRole} have clearly paid off, and this recognition is well-deserved. It's inspiring to see someone who consistently strives for excellence.
-
-Wishing you continued success in all your future endeavors!
-
-${closing},
-[Your Name]`,
-    }),
-    Recommendation: (greeting, closing) => ({
-      subject: `Recommendation: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I am writing to share a recommendation regarding ${topic}. Based on my experience as ${recipientRole}, I believe this could be highly beneficial.
-
-**Why I recommend this:**
-- Proven track record of success
-- Strong alignment with our objectives
-- Excellent potential for positive impact
-
-I would be happy to discuss this recommendation in more detail and answer any questions you might have.
-
-${closing},
-[Your Name]`,
-    }),
-    "Status Update": (greeting, closing) => ({
-      subject: `Status Update: ${topic}`,
-      body: `${greeting} ${recipientName},
-
-I'm writing to provide you with a status update on ${topic}. As ${recipientRole}, I wanted to ensure you're fully informed of our progress.
-
-**Current Status:**
-- Project is on track and progressing well
-- Key milestones have been achieved ahead of schedule
-
-**Next Steps:**
-- Complete remaining deliverables
-- Conduct final review and quality check
-- Prepare handover documentation
-
-I will continue to keep you updated as we move forward. Please let me know if you have any questions.
-
-${closing},
-[Your Name]`,
-    }),
-  }
-
-  const greeting = `${toneGreetings[tone] || "Dear"}`
-  const closings = toneClosings[tone] || toneClosings.formal
-  const closing = closings[Math.floor(Math.random() * closings.length)]
-
-  const template = typeTemplates[type]
+  const template = TEMPLATE_LIBRARY[type]
   if (template) {
-    return template(greeting, closing)
+    const result = template(greeting, closing, recipientName, recipientRole, topic)
+    return { ...result, subjectLine: result.subject }
   }
 
+  const subjectFn = SUBJECT_TEMPLATES[type] || ((t: string) => t)
   return {
-    subject: `${topic}`,
+    subject: subjectFn(topic),
+    subjectLine: subjectFn(topic),
     body: `${greeting} ${recipientName},
 
-I am writing to discuss ${topic}. With your role as ${recipientRole}, I believe this is something that could be of mutual interest.
+I am writing to discuss ${topic}. With your role as ${recipientRole || "a professional in this field"}, I believe this is something that could be of mutual interest.
 
 I look forward to hearing your thoughts and finding ways to collaborate effectively.
 
@@ -238,9 +279,10 @@ export function EmailWriter() {
   const [recipientName, setRecipientName] = React.useState("")
   const [recipientRole, setRecipientRole] = React.useState("")
   const [tone, setTone] = React.useState<(typeof TONES)[number]["value"]>("formal")
-  const [emailType, setEmailType] = React.useState<(typeof EMAIL_TYPES)[number]>("Introduction")
+  const [emailType, setEmailType] = React.useState<(typeof EMAIL_TYPES)[number]>("Professional")
   const [loading, setLoading] = React.useState(false)
-  const [email, setEmail] = React.useState<{ subject: string; body: string } | null>(null)
+  const [progress, setProgress] = React.useState(0)
+  const [email, setEmail] = React.useState<{ subject: string; body: string; subjectLine: string } | null>(null)
   const [copied, setCopied] = React.useState(false)
 
   const handleGenerate = React.useCallback(async () => {
@@ -254,7 +296,20 @@ export function EmailWriter() {
     }
 
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 1500))
+    setProgress(0)
+
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        const next = prev + Math.random() * 20
+        return next >= 90 ? 90 : next
+      })
+    }, 200)
+
+    await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200))
+
+    clearInterval(interval)
+    setProgress(100)
+
     const result = generateEmail(topic, recipientName, recipientRole || "colleague", tone, emailType)
     setEmail(result)
     setLoading(false)
@@ -286,7 +341,7 @@ export function EmailWriter() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Email Writer</h1>
-          <p className="text-sm text-muted-foreground">Write professional emails with AI</p>
+          <p className="text-sm text-muted-foreground">Write professional emails with AI — 12 email types</p>
         </div>
       </motion.div>
 
@@ -364,6 +419,10 @@ export function EmailWriter() {
         >
           Generate Email
         </Button>
+
+        {loading && (
+          <ProgressBar value={progress} variant="gradient" showPercentage label="Writing email..." />
+        )}
       </Card>
 
       <AnimatePresence>
@@ -374,11 +433,14 @@ export function EmailWriter() {
             className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
           >
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-foreground">{email.subject}</span>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Mail className="h-4 w-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-sm font-medium text-foreground block truncate">{email.subject}</span>
+                  <span className="text-[10px] text-muted-foreground">{emailType} · {tone}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -400,6 +462,13 @@ export function EmailWriter() {
                   <RefreshCw className="h-3.5 w-3.5" />
                   Regenerate
                 </motion.button>
+              </div>
+            </div>
+            <div className="border-b border-border bg-muted/20 px-5 py-2">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-xs text-muted-foreground">Subject line suggestion</span>
+                <span className="text-sm text-foreground font-medium">{email.subjectLine}</span>
               </div>
             </div>
             <div className="p-5">

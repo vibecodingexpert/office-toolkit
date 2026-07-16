@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button"
 import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
+import mammoth from "mammoth"
+import html2canvas from "html2canvas"
+import { jsPDF } from "jspdf"
 import {
   Upload, Download, FileText, Check, X, FileDown, Eye, EyeOff,
 } from "lucide-react"
@@ -17,6 +20,8 @@ interface FileInfo {
   status: "idle" | "converting" | "done" | "error"
   convertedSize: number
   convertedUrl: string | null
+  htmlContent: string
+  blobUrl: string | null
 }
 
 function formatSize(bytes: number): string {
@@ -30,24 +35,36 @@ export function WordToPdf() {
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [showPreview, setShowPreview] = React.useState(false)
+  const previewRef = React.useRef<HTMLDivElement>(null)
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    setFileInfo({
-      id: crypto.randomUUID(),
-      file: f,
-      status: "idle",
-      convertedSize: 0,
-      convertedUrl: null,
-    })
-    setProgress(0)
-    setIsProcessing(false)
-    setShowPreview(false)
+    try {
+      const buffer = await f.arrayBuffer()
+      const result = await mammoth.convertToHtml({ arrayBuffer: buffer })
+      const htmlContent = result.value
+      const url = URL.createObjectURL(f)
+      setFileInfo({
+        id: crypto.randomUUID(),
+        file: f,
+        status: "idle",
+        convertedSize: 0,
+        convertedUrl: null,
+        htmlContent,
+        blobUrl: url,
+      })
+      setProgress(0)
+      setIsProcessing(false)
+      setShowPreview(true)
+    } catch {
+      toast.error("Could not parse this Word file. It may be corrupted or in an unsupported format.")
+    }
   }, [])
 
   const removeFile = React.useCallback(() => {
     if (fileInfo?.convertedUrl) URL.revokeObjectURL(fileInfo.convertedUrl)
+    if (fileInfo?.blobUrl) URL.revokeObjectURL(fileInfo.blobUrl)
     setFileInfo(null)
     setProgress(0)
     setIsProcessing(false)
@@ -55,25 +72,61 @@ export function WordToPdf() {
   }, [fileInfo])
 
   const convert = React.useCallback(async () => {
-    if (!fileInfo) return
+    if (!fileInfo || !previewRef.current) return
     setFileInfo((prev) => prev ? { ...prev, status: "converting" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2500 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([fileInfo.file], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    const convertedSize = Math.round(fileInfo.file.size * (0.6 + Math.random() * 0.4))
-    setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize, convertedUrl: url } : prev)
+    try {
+      const totalPages = Math.max(1, Math.ceil(fileInfo.htmlContent.length / 3000))
+      const pdf = new jsPDF("p", "mm", "a4")
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const pageWidth = pdf.internal.pageSize.getWidth()
+
+      for (let page = 0; page < totalPages; page++) {
+        const progressBase = (page / totalPages) * 100
+        setProgress(progressBase)
+        if (page > 0) pdf.addPage()
+        const mockDiv = document.createElement("div")
+        mockDiv.style.cssText = `width:${pageWidth * 3.78}px;padding:40px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;background:white;color:black;`
+        mockDiv.innerHTML = fileInfo.htmlContent
+        document.body.appendChild(mockDiv)
+        try {
+          const canvas = await html2canvas(mockDiv, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: "#ffffff",
+          })
+          const imgData = canvas.toDataURL("image/jpeg", 0.95)
+          const imgHeight = (canvas.height * pageWidth) / canvas.width
+          let heightLeft = imgHeight
+          let position = 0
+          while (heightLeft > 0) {
+            if (position > 0) pdf.addPage()
+            pdf.addImage(imgData, "JPEG", 0, position, pageWidth, imgHeight)
+            heightLeft -= pageHeight
+            position -= pageHeight
+          }
+        } finally {
+          document.body.removeChild(mockDiv)
+        }
+        setProgress(((page + 1) / totalPages) * 100)
+      }
+
+      const pdfBlob = pdf.output("blob")
+      const url = URL.createObjectURL(pdfBlob)
+      setFileInfo((prev) => prev ? {
+        ...prev,
+        status: "done",
+        convertedSize: pdfBlob.size,
+        convertedUrl: url,
+      } : prev)
+      toast.success("Word document converted to PDF successfully!")
+    } catch (err) {
+      toast.error("Conversion failed. The document may be too complex for browser rendering.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    }
     setIsProcessing(false)
-    toast.success("Word document converted to PDF successfully!")
   }, [fileInfo])
 
   const download = React.useCallback(() => {
@@ -153,11 +206,27 @@ export function WordToPdf() {
             )}
           </motion.div>
 
+          {fileInfo.status === "idle" && !isProcessing && fileInfo.htmlContent && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-foreground">Word Preview</label>
+                <Button size="sm" variant="ghost" onClick={() => setShowPreview(!showPreview)} icon={showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}>
+                  {showPreview ? "Hide" : "Show"}
+                </Button>
+              </div>
+              {showPreview && (
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-border bg-white p-4 text-sm text-black">
+                  <div ref={previewRef} dangerouslySetInnerHTML={{ __html: fileInfo.htmlContent }} />
+                </div>
+              )}
+            </div>
+          )}
+
           {isProcessing && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                Converting Word to PDF...
+                Converting Word to PDF (rendering content)...
               </div>
               <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
             </div>
@@ -182,20 +251,11 @@ export function WordToPdf() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setShowPreview(!showPreview)} icon={showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}>
-                    {showPreview ? "Hide" : "Preview"}
-                  </Button>
                   <Button size="sm" variant="primary" onClick={download} icon={<Download className="h-3.5 w-3.5" />}>
                     Download PDF
                   </Button>
                 </div>
               </div>
-              {showPreview && (
-                <div className="rounded-xl border border-border bg-muted/30 p-6 text-center">
-                  <FileText className="mx-auto h-12 w-12 text-muted-foreground/40" />
-                  <p className="mt-2 text-sm text-muted-foreground">PDF preview placeholder — file ready for download</p>
-                </div>
-              )}
               <Button variant="ghost" size="sm" onClick={removeFile} className="w-full">
                 Convert another file
               </Button>

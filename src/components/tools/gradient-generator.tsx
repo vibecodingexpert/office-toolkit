@@ -5,211 +5,113 @@ import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { Copy, Check, Palette, RotateCcw } from "lucide-react"
+import { Copy, Download, RefreshCw, ImageIcon } from "lucide-react"
 
-type GradientType = "linear" | "radial"
-type Direction = "to right" | "to bottom" | "to bottom right" | "to bottom left" | "to top" | "to left" | "to top right" | "to top left"
+const TYPES = [
+  { id: "linear", name: "Linear" },
+  { id: "radial", name: "Radial" },
+  { id: "conic", name: "Conic" },
+]
 
-const DIRECTIONS: Direction[] = [
-  "to right",
-  "to bottom",
-  "to bottom right",
-  "to bottom left",
-  "to top",
-  "to left",
-  "to top right",
-  "to top left",
+const DIRECTIONS = [
+  { id: "to right", name: "\u2192" },
+  { id: "to left", name: "\u2190" },
+  { id: "to bottom", name: "\u2193" },
+  { id: "to top", name: "\u2191" },
+  { id: "to bottom right", name: "\u2198" },
+  { id: "to top left", name: "\u2196" },
 ]
 
 const PRESETS = [
-  { name: "Sunset", from: "#ff6b6b", to: "#feca57", type: "linear" as GradientType, direction: "to right" as Direction },
-  { name: "Ocean", from: "#48dbfb", to: "#0abde3", type: "linear" as GradientType, direction: "to bottom" as Direction },
-  { name: "Mint", from: "#1dd1a1", to: "#10ac84", type: "linear" as GradientType, direction: "to right" as Direction },
-  { name: "Lavender", from: "#a29bfe", to: "#6c5ce7", type: "linear" as GradientType, direction: "to bottom right" as Direction },
-  { name: "Peach", from: "#fd79a8", to: "#e84393", type: "linear" as GradientType, direction: "to right" as Direction },
-  { name: "Forest", from: "#00b894", to: "#00cec9", type: "linear" as GradientType, direction: "to bottom" as Direction },
-  { name: "Night", from: "#2d3436", to: "#636e72", type: "linear" as GradientType, direction: "to right" as Direction },
-  { name: "Sunrise", from: "#fdcb6e", to: "#e17055", type: "radial" as GradientType, direction: "to right" as Direction },
-  { name: "Sky", from: "#74b9ff", to: "#0984e3", type: "linear" as GradientType, direction: "to bottom" as Direction },
-  { name: "Aurora", from: "#a29bfe", to: "#fd79a8", type: "linear" as GradientType, direction: "to bottom right" as Direction },
-  { name: "Gold", from: "#ffeaa7", to: "#fdcb6e", type: "linear" as GradientType, direction: "to right" as Direction },
-  { name: "Berry", from: "#6c5ce7", to: "#e84393", type: "radial" as GradientType, direction: "to right" as Direction },
+  { id: "ocean", name: "Ocean", c1: "#06b6d4", c2: "#3b82f6" },
+  { id: "sunset", name: "Sunset", c1: "#f97316", c2: "#e11d48" },
+  { id: "forest", name: "Forest", c1: "#22c55e", c2: "#166534" },
+  { id: "lavender", name: "Lavender", c1: "#a855f7", c2: "#7c3aed" },
+  { id: "gold", name: "Gold", c1: "#f59e0b", c2: "#d97706" },
+  { id: "teal", name: "Teal", c1: "#14b8a6", c2: "#0d9488" },
+  { id: "midnight", name: "Midnight", c1: "#1e293b", c2: "#0f172a" },
+  { id: "cherry", name: "Cherry", c1: "#ec4899", c2: "#be185d" },
 ]
 
 export function GradientGenerator() {
-  const [colorFrom, setColorFrom] = React.useState("#6366f1")
-  const [colorTo, setColorTo] = React.useState("#ec4899")
-  const [gradientType, setGradientType] = React.useState<GradientType>("linear")
-  const [direction, setDirection] = React.useState<Direction>("to right")
-  const [copied, setCopied] = React.useState(false)
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const [color1, setColor1] = React.useState("#14b8a6")
+  const [color2, setColor2] = React.useState("#0d9488")
+  const [type, setType] = React.useState(TYPES[0])
+  const [direction, setDirection] = React.useState(DIRECTIONS[0])
+  const [width, setWidth] = React.useState(600)
+  const [height, setHeight] = React.useState(200)
 
-  const cssCode = React.useMemo(() => {
-    if (gradientType === "linear") {
-      return `background: linear-gradient(${direction}, ${colorFrom}, ${colorTo});`
+  React.useEffect(() => { drawGradient() }, [color1, color2, type, direction, width, height])
+
+  const drawGradient = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    canvas.width = width; canvas.height = height
+    let grad: CanvasGradient
+    if (type.id === "linear") {
+      let angle = 0
+      switch (direction.id) {
+        case "to right": angle = 0; break; case "to left": angle = Math.PI; break
+        case "to bottom": angle = Math.PI / 2; break; case "to top": angle = -Math.PI / 2; break
+        case "to bottom right": angle = Math.PI / 4; break; case "to top left": angle = -3 * Math.PI / 4; break
+      }
+      const cx = width / 2, cy = height / 2
+      const r = Math.sqrt(width * width + height * height) / 2
+      const sx = cx + r * Math.cos(angle + Math.PI), sy = cy + r * Math.sin(angle + Math.PI)
+      const ex = cx + r * Math.cos(angle), ey = cy + r * Math.sin(angle)
+      grad = ctx.createLinearGradient(sx, sy, ex, ey)
+    } else if (type.id === "radial") {
+      grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) / 2)
+    } else {
+      grad = ctx.createConicGradient(0, width / 2, height / 2)
     }
-    return `background: radial-gradient(circle, ${colorFrom}, ${colorTo});`
-  }, [colorFrom, colorTo, gradientType, direction])
-
-  const handleCopy = React.useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(cssCode)
-      setCopied(true)
-      toast.success("CSS copied to clipboard")
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      toast.error("Failed to copy")
+    grad.addColorStop(0, color1)
+    grad.addColorStop(1, color2)
+    if (type.id === "conic") {
+      ctx.translate(width / 2, height / 2)
+      ctx.fillStyle = grad as CanvasGradient
+      ctx.fillRect(-width / 2, -height / 2, width, height)
+    } else {
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, width, height)
     }
-  }, [cssCode])
+  }
 
-  const applyPreset = React.useCallback((preset: typeof PRESETS[0]) => {
-    setColorFrom(preset.from)
-    setColorTo(preset.to)
-    setGradientType(preset.type)
-    setDirection(preset.direction)
-  }, [])
+  const copyCSS = () => {
+    const css = `background: ${type.id === "linear" ? `linear-gradient(${direction.id}, ${color1}, ${color2})` : type.id === "radial" ? `radial-gradient(circle, ${color1}, ${color2})` : `conic-gradient(from 0deg, ${color1}, ${color2})`};`
+    navigator.clipboard.writeText(css)
+    toast.success("CSS copied")
+  }
+
+  const handleDownload = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement("a"); link.download = "gradient.png"; link.href = canvas.toDataURL(); link.click()
+    toast.success("Gradient downloaded")
+  }
+
+  const randomColor = () => `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0")}`
+  const randomize = () => { setColor1(randomColor()); setColor2(randomColor()) }
 
   return (
-    <Card className="space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <Palette className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold">Gradient Generator</h2>
-          <p className="text-sm text-muted-foreground">
-            Create beautiful CSS gradients visually
-          </p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10"><ImageIcon className="h-6 w-6 text-teal-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Gradient Generator</h1><p className="text-sm text-muted-foreground">Create beautiful CSS gradients</p></div></div>
+        <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={copyCSS}><Copy className="h-4 w-4" /> CSS</Button><Button variant="outline" size="sm" onClick={randomize}><RefreshCw className="h-4 w-4" /> Random</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /></Button></div>
+      </motion.div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Gradient Type</label>
-        <div className="flex gap-2">
-          {(["linear", "radial"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setGradientType(t)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium capitalize transition-colors ${
-                gradientType === t
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="flex flex-wrap gap-2">{TYPES.map((t) => (<button key={t.id} onClick={() => setType(t)} className={`rounded-lg border px-4 py-2 text-sm ${type.id === t.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{t.name}</button>))}</div>
+      {type.id === "linear" && <div className="flex flex-wrap gap-2">{DIRECTIONS.map((d) => (<button key={d.id} onClick={() => setDirection(d)} className={`rounded-lg border px-3 py-1 text-sm ${direction.id === d.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{d.name}</button>))}</div>}
 
-      {gradientType === "linear" && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Direction</label>
-          <div className="flex flex-wrap gap-1.5">
-            {DIRECTIONS.map((d) => (
-              <button
-                key={d}
-                onClick={() => setDirection(d)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  direction === d
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <Card className="flex items-center justify-center p-4"><canvas ref={canvasRef} className="w-full max-w-2xl rounded-lg shadow-lg" /></Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Color 1</label>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={colorFrom}
-              onChange={(e) => setColorFrom(e.target.value)}
-              className="h-10 w-14 rounded-lg border border-border bg-background cursor-pointer"
-            />
-            <input
-              value={colorFrom}
-              onChange={(e) => setColorFrom(e.target.value)}
-              className="flex-1 h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Color 2</label>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={colorTo}
-              onChange={(e) => setColorTo(e.target.value)}
-              className="h-10 w-14 rounded-lg border border-border bg-background cursor-pointer"
-            />
-            <input
-              value={colorTo}
-              onChange={(e) => setColorTo(e.target.value)}
-              className="flex-1 h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="h-40 rounded-xl border border-border shadow-inner"
-        style={{ background: gradientType === "linear" ? `linear-gradient(${direction}, ${colorFrom}, ${colorTo})` : `radial-gradient(circle, ${colorFrom}, ${colorTo})` }}
-      />
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-foreground">CSS Code</label>
-          <button
-            onClick={handleCopy}
-            className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            {copied ? (
-              <>
-                <Check className="h-3.5 w-3.5 text-emerald-500" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="h-3.5 w-3.5" />
-                Copy
-              </>
-            )}
-          </button>
-        </div>
-        <div className="rounded-xl border border-border bg-zinc-950 dark:bg-zinc-900 p-4">
-          <pre className="whitespace-pre-wrap text-sm font-mono text-green-400">
-            {cssCode}
-          </pre>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Presets</label>
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.name}
-              onClick={() => applyPreset(preset)}
-              className="group relative h-14 rounded-xl border border-border overflow-hidden transition-all hover:scale-105 hover:shadow-md"
-              style={{
-                background: preset.type === "linear"
-                  ? `linear-gradient(${preset.direction}, ${preset.from}, ${preset.to})`
-                  : `radial-gradient(circle, ${preset.from}, ${preset.to})`,
-              }}
-            >
-              <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 text-white text-[10px] font-medium">
-                {preset.name}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </Card>
+      <Card><h3 className="mb-4 font-semibold text-foreground">Colors</h3><div className="flex flex-wrap gap-4">
+        {PRESETS.map((p) => (<button key={p.id} onClick={() => { setColor1(p.c1); setColor2(p.c2) }} className="flex items-center gap-2 rounded-lg border px-3 py-1 text-xs hover:border-primary/50"><div className="flex"><div className="h-4 w-4 rounded-l" style={{ backgroundColor: p.c1 }} /><div className="h-4 w-4 rounded-r" style={{ backgroundColor: p.c2 }} /></div>{p.name}</button>))}
+      </div></Card>
+      <Card><div className="flex flex-wrap gap-4"><div className="flex items-center gap-2"><span className="text-sm text-foreground">Color 1:</span><input type="color" value={color1} onChange={(e) => setColor1(e.target.value)} className="h-10 w-10 rounded border" /></div><div className="flex items-center gap-2"><span className="text-sm text-foreground">Color 2:</span><input type="color" value={color2} onChange={(e) => setColor2(e.target.value)} className="h-10 w-10 rounded border" /></div><div className="flex items-center gap-2"><span className="text-sm text-foreground">Width:</span><input type="number" value={width} onChange={(e) => setWidth(parseInt(e.target.value) || 600)} className="w-20 rounded border border-input bg-background px-2 py-1 text-sm" /></div><div className="flex items-center gap-2"><span className="text-sm text-foreground">Height:</span><input type="number" value={height} onChange={(e) => setHeight(parseInt(e.target.value) || 200)} className="w-20 rounded border border-input bg-background px-2 py-1 text-sm" /></div></div></Card>
+    </div>
   )
 }

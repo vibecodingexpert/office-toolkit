@@ -1,15 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, Maximize, Video, Check, X, Lock, Unlock,
+  Upload, Download, Maximize, Video, Check, X,
 } from "lucide-react"
+import { resizeVideo, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -19,26 +19,30 @@ function formatSize(bytes: number): string {
 }
 
 const presets = [
-  { label: "480p", w: 854, h: 480 },
-  { label: "720p", w: 1280, h: 720 },
-  { label: "1080p", w: 1920, h: 1080 },
-  { label: "1440p", w: 2560, h: 1440 },
-  { label: "4K", w: 3840, h: 2160 },
+  { label: "480p", w: 854 },
+  { label: "720p", w: 1280 },
+  { label: "1080p", w: 1920 },
+  { label: "1440p", w: 2560 },
+  { label: "4K", w: 3840 },
 ]
 
 export function ResizeVideo() {
   const [file, setFile] = React.useState<File | null>(null)
   const [fileUrl, setFileUrl] = React.useState<string | null>(null)
   const [origW, setOrigW] = React.useState(0)
-  const [origH, setOrigH] = React.useState(0)
-  const [customW, setCustomW] = React.useState(1920)
-  const [customH, setCustomH] = React.useState(1080)
-  const [aspectLocked, setAspectLocked] = React.useState(true)
+  const [width, setWidth] = React.useState(1920)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [progress, setProgress] = React.useState(0)
   const [resultUrl, setResultUrl] = React.useState<string | null>(null)
   const [resultSize, setResultSize] = React.useState(0)
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+      toast.error("Failed to initialize FFmpeg")
+    })
+  }, [])
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -54,65 +58,36 @@ export function ResizeVideo() {
     video.src = url
     video.onloadedmetadata = () => {
       const w = video.videoWidth || 1920
-      const h = video.videoHeight || 1080
       setOrigW(w)
-      setOrigH(h)
-      setCustomW(w)
-      setCustomH(h)
+      setWidth(w)
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [fileUrl, resultUrl])
 
-  const applyPreset = React.useCallback((preset: typeof presets[0]) => {
-    setCustomW(preset.w)
-    setCustomH(preset.h)
-  }, [])
-
-  const handleWidthChange = React.useCallback((val: number) => {
-    setCustomW(val)
-    if (aspectLocked && origW > 0) {
-      setCustomH(Math.round(val * (origH / origW)))
-    }
-  }, [aspectLocked, origW, origH])
-
-  const handleHeightChange = React.useCallback((val: number) => {
-    setCustomH(val)
-    if (aspectLocked && origH > 0) {
-      setCustomW(Math.round(val * (origW / origH)))
-    }
-  }, [aspectLocked, origW, origH])
-
   const resize = React.useCallback(async () => {
     if (!file) { toast.error("Please upload a video"); return }
-    if (customW < 1 || customH < 1) { toast.error("Invalid dimensions"); return }
+    if (width < 1) { toast.error("Invalid width"); return }
     setIsProcessing(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([await file.arrayBuffer()], { type: "video/mp4" })
-    const url = URL.createObjectURL(blob)
-    const sizeRatio = (customW * customH) / (origW * origH || 1)
-    setResultSize(Math.round(file.size * Math.min(Math.max(sizeRatio, 0.1), 2)))
-    setResultUrl(url)
+    try {
+      const blob = await resizeVideo(file, width)
+      const url = URL.createObjectURL(blob)
+      setResultSize(blob.size)
+      setResultUrl(url)
+      toast.success("Video resized successfully!")
+    } catch {
+      toast.error("Failed to resize video")
+    }
     setIsProcessing(false)
-    toast.success("Video resized successfully!")
-  }, [file, customW, customH, origW, origH])
+  }, [file, width])
 
   const download = React.useCallback(() => {
     if (!resultUrl) return
     const a = document.createElement("a")
     a.href = resultUrl
     const base = file?.name.replace(/\.[^/.]+$/, "") ?? "video"
-    a.download = `${base}_${customW}x${customH}.mp4`
+    a.download = `${base}_${width}w.mp4`
     a.click()
-  }, [resultUrl, file, customW, customH])
+  }, [resultUrl, file, width])
 
   const reset = React.useCallback(() => {
     if (fileUrl) URL.revokeObjectURL(fileUrl)
@@ -121,12 +96,28 @@ export function ResizeVideo() {
     setFileUrl(null)
     setResultUrl(null)
     setOrigW(0)
-    setOrigH(0)
-    setCustomW(1920)
-    setCustomH(1080)
-    setProgress(0)
+    setWidth(1920)
     setIsProcessing(false)
   }, [fileUrl, resultUrl])
+
+  if (ffmpegLoading) {
+    return (
+      <Card className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+            <Maximize className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Resize Video</h2>
+            <p className="text-sm text-muted-foreground">Loading FFmpeg...</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="space-y-6 p-6">
@@ -136,7 +127,7 @@ export function ResizeVideo() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Resize Video</h2>
-          <p className="text-sm text-muted-foreground">Change video resolution and aspect ratio</p>
+          <p className="text-sm text-muted-foreground">Change video resolution</p>
         </div>
       </div>
 
@@ -161,7 +152,7 @@ export function ResizeVideo() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
-                <p className="text-xs text-muted-foreground">{formatSize(file.size)} · Original: {origW}x{origH}</p>
+                <p className="text-xs text-muted-foreground">{formatSize(file.size)} · Original: {origW}px</p>
               </div>
               <button onClick={reset} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                 <X className="h-4 w-4" />
@@ -170,65 +161,39 @@ export function ResizeVideo() {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Preset Resolutions</label>
+            <label className="text-sm font-medium text-foreground">Preset Widths</label>
             <div className="flex flex-wrap gap-2">
               {presets.map((p) => (
                 <button
                   key={p.label}
-                  onClick={() => applyPreset(p)}
+                  onClick={() => setWidth(p.w)}
                   className={cn(
                     "rounded-xl border px-4 py-2 text-sm font-medium transition-all",
-                    customW === p.w && customH === p.h
+                    width === p.w
                       ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/20"
                       : "border-border bg-card text-foreground hover:border-emerald-500/30"
                   )}
                 >
-                  {p.label} ({p.w}x{p.h})
+                  {p.label} ({p.w}px)
                 </button>
               ))}
             </div>
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-foreground">Custom Dimensions</label>
-              <button
-                onClick={() => setAspectLocked(!aspectLocked)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-                  aspectLocked ? "text-emerald-500" : "text-muted-foreground"
-                )}
-              >
-                {aspectLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                {aspectLocked ? "Locked" : "Unlocked"}
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-muted-foreground">Width (px)</label>
-                <input
-                  type="number" min={1} max={7680}
-                  value={customW}
-                  onChange={(e) => handleWidthChange(Number(e.target.value))}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Height (px)</label>
-                <input
-                  type="number" min={1} max={4320}
-                  value={customH}
-                  onChange={(e) => handleHeightChange(Number(e.target.value))}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                />
-              </div>
-            </div>
+            <label className="text-sm font-medium text-foreground">Custom Width (px)</label>
+            <input
+              type="number" min={1} max={7680}
+              value={width}
+              onChange={(e) => setWidth(Number(e.target.value))}
+              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+            />
           </div>
 
           {origW > 0 && (
             <div className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3 text-sm">
-              <span className="text-muted-foreground">Original: <strong className="text-foreground">{origW}x{origH}</strong></span>
-              <span className="text-muted-foreground">New: <strong className="text-emerald-500">{customW}x{customH}</strong></span>
+              <span className="text-muted-foreground">Original width: <strong className="text-foreground">{origW}px</strong></span>
+              <span className="text-muted-foreground">New width: <strong className="text-emerald-500">{width}px</strong></span>
             </div>
           )}
 
@@ -236,9 +201,15 @@ export function ResizeVideo() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                Resizing video to {customW}x{customH}...
+                Resizing video to {width}px width...
               </div>
-              <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="h-full w-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
+                />
+              </div>
             </div>
           )}
 
@@ -254,7 +225,7 @@ export function ResizeVideo() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-foreground">Resize Complete</p>
-                  <p className="text-xs text-muted-foreground">{customW}x{customH} · {formatSize(resultSize)}</p>
+                  <p className="text-xs text-muted-foreground">{width}px width · {formatSize(resultSize)}</p>
                 </div>
                 <Button size="sm" onClick={download} icon={<Download className="h-3.5 w-3.5" />}>
                   Download
@@ -264,7 +235,7 @@ export function ResizeVideo() {
           )}
 
           {!isProcessing && !resultUrl && (
-            <Button onClick={resize} size="lg" className="w-full" icon={<Maximize className="h-4 w-4" />} disabled={customW < 1 || customH < 1}>
+            <Button onClick={resize} size="lg" className="w-full" icon={<Maximize className="h-4 w-4" />} disabled={width < 1}>
               Resize Video
             </Button>
           )}

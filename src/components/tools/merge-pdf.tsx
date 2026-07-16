@@ -10,21 +10,17 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, ArrowUp, ArrowDown, Layers,
 } from "lucide-react"
+import { mergePDFs } from "@/lib/utils/pdf-utils"
 
 interface FileItem {
   id: string
   file: File
-  pages: number
 }
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
-function simulatePages(size: number): number {
-  return Math.max(1, Math.floor(size / 50000))
 }
 
 export function MergePdf() {
@@ -41,7 +37,6 @@ export function MergePdf() {
     const newItems: FileItem[] = Array.from(fileList).map((f) => ({
       id: crypto.randomUUID(),
       file: f,
-      pages: simulatePages(f.size),
     }))
     setFiles((prev) => [...prev, ...newItems])
     if (fileInputRef.current) fileInputRef.current.value = ""
@@ -69,7 +64,6 @@ export function MergePdf() {
     })
   }, [files.length])
 
-  const totalPages = React.useMemo(() => files.reduce((s, f) => s + f.pages, 0), [files])
   const totalSize = React.useMemo(() => files.reduce((s, f) => s + f.file.size, 0), [files])
 
   const merge = React.useCallback(async () => {
@@ -79,24 +73,24 @@ export function MergePdf() {
     }
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 8
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 3000 + files.length * 1000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob(
-      files.map((f) => f.file),
-      { type: "application/pdf" }
-    )
-    const url = URL.createObjectURL(blob)
-    setMergedSize(blob.size)
-    setMergedUrl(url)
-    setIsProcessing(false)
-    toast.success("PDFs merged successfully!")
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const blob = await mergePDFs(files.map((f) => f.file))
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      setMergedUrl(url)
+      setMergedSize(blob.size)
+      toast.success("PDFs merged successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to merge PDFs. Please try again.")
+    } finally {
+      setIsProcessing(false)
+    }
   }, [files])
 
   const download = React.useCallback(() => {
@@ -143,7 +137,7 @@ export function MergePdf() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">{files.length} file(s) · {totalPages} total pages · {formatSize(totalSize)}</span>
+            <span className="text-sm text-muted-foreground">{files.length} file(s) · {formatSize(totalSize)}</span>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} icon={<Upload className="h-3.5 w-3.5" />}>
                 Add Files
@@ -169,7 +163,7 @@ export function MergePdf() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{item.file.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatSize(item.file.size)} · {item.pages} page{item.pages !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-muted-foreground">{formatSize(item.file.size)}</p>
                   </div>
                   <div className="flex items-center gap-0.5">
                     <span className="text-xs text-muted-foreground w-5 text-center">{index + 1}</span>
@@ -192,7 +186,7 @@ export function MergePdf() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                Merging {files.length} PDF files ({totalPages} total pages)...
+                Merging {files.length} PDF files...
               </div>
               <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
             </div>
@@ -211,7 +205,7 @@ export function MergePdf() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">Merge Complete</p>
-                    <p className="text-xs text-muted-foreground">{files.length} files · {totalPages} pages · {formatSize(mergedSize)}</p>
+                    <p className="text-xs text-muted-foreground">{files.length} files · {formatSize(mergedSize)}</p>
                   </div>
                 </div>
                 <Button size="sm" variant="primary" onClick={download} icon={<Download className="h-3.5 w-3.5" />}>

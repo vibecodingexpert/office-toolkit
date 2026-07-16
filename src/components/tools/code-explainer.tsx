@@ -4,6 +4,7 @@ import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
@@ -11,167 +12,137 @@ import {
   Copy,
   Check,
   Sparkles,
-  ChevronDown,
   ChevronRight,
+  BarChart3,
+  Lightbulb,
+  Gauge,
 } from "lucide-react"
 
 const LANGUAGES = [
-  "JavaScript",
-  "Python",
-  "TypeScript",
-  "React",
-  "Java",
-  "C++",
-  "Go",
-  "Rust",
-  "SQL",
-  "Ruby",
+  "JavaScript", "Python", "TypeScript", "React", "Java", "C++", "Go", "Rust", "SQL", "Ruby",
 ] as const
 
-function generateExplanation(code: string, language: string): { lines: { code: string; explanation: string; lineNumber: number }[]; overview: string } {
-  const lines = code.split("\n").filter(l => l.trim())
-  const explanations: { code: string; explanation: string; lineNumber: number }[] = []
+function estimateComplexity(code: string): { time: string; space: string; score: number } {
+  const hasLoops = (code.match(/\b(for|while)\s*\(/g) || []).length
+  const hasNestedLoops = (code.match(/\b(for|while)\s*\([^}]*\b(for|while)\s*\(/g) || []).length
+  const hasRecursion = code.includes("function") && code.includes("function")
+  const hasSort = code.toLowerCase().includes("sort")
+  const hasMap = code.includes(".map")
+  const hasFilter = code.includes(".filter")
+  const hasReduce = code.includes(".reduce")
+  const hasBinarySearch = code.toLowerCase().includes("binary") || code.includes("mid =")
 
+  if (hasNestedLoops > 0) return { time: "O(n²)", space: "O(1)", score: 3 }
+  if (hasSort || hasBinarySearch) return { time: "O(n log n)", space: "O(n)", score: 2 }
+  if (hasLoops > 0 || hasMap || hasFilter || hasReduce) return { time: "O(n)", space: "O(n)", score: 1 }
+  return { time: "O(1)", space: "O(1)", score: 0 }
+}
+
+function generateSuggestions(code: string): string[] {
+  const suggestions: string[] = []
+  if (!code.includes("try") && (code.includes("throw") || code.includes("error"))) {
+    suggestions.push("Add try/catch blocks for better error handling")
+  }
+  if (!code.includes("//") && !code.includes("/*")) {
+    suggestions.push("Add comments to explain complex logic")
+  }
+  if (code.includes("var ")) {
+    suggestions.push("Replace 'var' with 'const' or 'let' for better scoping")
+  }
+  if (!code.includes("types") && !code.includes("interface") && (code.includes("function") || code.includes("class"))) {
+    suggestions.push("Consider adding TypeScript types/interfaces for better type safety")
+  }
+  if ((code.match(/\bif\b/g) || []).length > 3) {
+    suggestions.push("Consider using a switch statement or object lookup for multiple conditions")
+  }
+  if (code.includes("console.log")) {
+    suggestions.push("Remove console.log statements in production code")
+  }
+  if ((code.match(/\bconst\b/g) || []).length > 0 && (code.match(/\blet\b/g) || []).length === 0) {
+    suggestions.push("Good use of const! Ensure all immutable references use const")
+  }
+  if (code.includes("== ") || code.includes("==")) {
+    suggestions.push("Use === instead of == for strict equality checks")
+  }
+  suggestions.push("Extract repeated logic into reusable functions")
+  suggestions.push("Add input validation for function parameters")
+  suggestions.push("Consider adding unit tests for edge cases")
+  return suggestions
+}
+
+function generateExplanation(code: string, language: string): { lines: { code: string; explanation: string; lineNumber: number }[]; overview: string; complexity: { time: string; space: string; score: number }; suggestions: string[] } {
   const keywordExplanations: Record<string, string> = {
     import: "This import statement brings in external modules or dependencies, making their exported functionality available in the current scope.",
     export: "Export makes this module's functionality available to other files that import it, establishing the public API of this module.",
-    function: "Declares a reusable block of code that can be called with arguments to perform a specific task. Functions are first-class citizens in JavaScript.",
-    const: "Declares a block-scoped constant whose value cannot be reassigned after initialization. The variable is available only within the enclosing block.",
-    let: "Declares a block-scoped variable that can be reassigned. Unlike var, it is not hoisted to the function scope and has temporal dead zone behavior.",
-    var: "Declares a function-scoped variable that is hoisted to the top of its enclosing function scope. Generally, const and let are preferred in modern JavaScript.",
+    function: "Declares a reusable block of code that can be called with arguments to perform a specific task.",
+    const: "Declares a block-scoped constant whose value cannot be reassigned after initialization.",
+    let: "Declares a block-scoped variable that can be reassigned. Unlike var, it has temporal dead zone behavior.",
+    var: "Declares a function-scoped variable that is hoisted. Prefer const and let in modern code.",
     if: "Starts a conditional block that executes the enclosed code only when the specified condition evaluates to true.",
     else: "Provides an alternative code block that executes when the preceding if condition evaluates to false.",
-    "for": "Creates a loop that executes a block of code a specified number of times, with initialization, condition, and increment/decrement expressions.",
-    while: "Creates a loop that continues executing as long as the specified condition remains true. The condition is evaluated before each iteration.",
-    return: "Exits the current function and optionally returns a value to the caller. If no value is specified, undefined is returned.",
-    class: "Defines a blueprint for creating objects with shared properties and methods. Classes support inheritance through the extends keyword.",
-    interface: "Defines a contract for object shapes in TypeScript, specifying required properties and their types. Interfaces are purely a compile-time construct.",
-    type: "Creates a type alias in TypeScript, allowing complex type definitions to be given a name and reused throughout the codebase.",
-    async: "Marks a function as asynchronous, enabling the use of await within it. Async functions always return a Promise, regardless of their return value.",
-    await: "Pauses execution of an async function until the awaited Promise settles (resolves or rejects), then resumes with the resolved value.",
-    try: "Begins a block of code that may throw an error. Used in conjunction with catch to implement error handling.",
-    catch: "Defines a block that executes when an error is thrown in the associated try block, receiving the error object for handling.",
-    throw: "Explicitly raises an exception, which can be caught by an enclosing try/catch block. Can throw any value, typically an Error object.",
-    "new": "Creates an instance of a constructor function or class, allocating memory and initializing the object's properties.",
-    "this": "Refers to the current execution context. Its value depends on how the function is called: method invocation, function invocation, or arrow function.",
-    "true": "Boolean literal representing the logical true value. In JavaScript, truthy values coerce to true in boolean contexts.",
-    "false": "Boolean literal representing the logical false value. Falsy values include false, 0, '', null, undefined, and NaN.",
-    "null": "Represents the intentional absence of any object value. Unlike undefined, null is typically assigned explicitly.",
-    undefined: "Represents a variable that has been declared but not assigned a value. Also the default return value of functions without explicit returns.",
+    "for": "Creates a loop that executes a block of code a specified number of times.",
+    while: "Creates a loop that continues executing as long as the specified condition remains true.",
+    return: "Exits the current function and optionally returns a value to the caller.",
+    class: "Defines a blueprint for creating objects with shared properties and methods.",
+    interface: "Defines a contract for object shapes in TypeScript, specifying required properties and types.",
+    type: "Creates a type alias in TypeScript, allowing complex type definitions to be reused.",
+    async: "Marks a function as asynchronous, enabling the use of await within it.",
+    await: "Pauses execution of an async function until the awaited Promise settles.",
+    try: "Begins a block of code that may throw an error. Used with catch for error handling.",
+    catch: "Defines a block that executes when an error is thrown in the associated try block.",
+    throw: "Explicitly raises an exception, which can be caught by an enclosing try/catch block.",
+    "new": "Creates an instance of a constructor function or class.",
+    "this": "Refers to the current execution context. Its value depends on how the function is called.",
   }
 
   const codeLines = code.split("\n")
+  const explanations: { code: string; explanation: string; lineNumber: number }[] = []
   let inMultiLineComment = false
 
   for (let i = 0; i < codeLines.length; i++) {
     const line = codeLines[i]
 
-    if (line.trim().startsWith("/*")) {
-      inMultiLineComment = true
-    }
-
+    if (line.trim().startsWith("/*")) { inMultiLineComment = true }
     if (inMultiLineComment) {
-      explanations.push({
-        code: line,
-        explanation: "This is a multi-line comment block, used for documentation or temporarily disabling code sections.",
-        lineNumber: i + 1,
-      })
-      if (line.includes("*/")) {
-        inMultiLineComment = false
-      }
+      explanations.push({ code: line, explanation: "Multi-line comment block for documentation.", lineNumber: i + 1 })
+      if (line.includes("*/")) inMultiLineComment = false
       continue
     }
-
     if (line.trim().startsWith("//")) {
-      const comment = line.trim().slice(2).trim()
-      explanations.push({
-        code: line,
-        explanation: `Inline comment: ${comment}. Comments are ignored during execution and serve as documentation for developers.`,
-        lineNumber: i + 1,
-      })
+      explanations.push({ code: line, explanation: `Comment: ${line.trim().slice(2).trim()}`, lineNumber: i + 1 })
       continue
     }
+    if (line.trim() === "" || line.trim() === "```") continue
 
-    if (line.trim() === "" || line.trim() === "```") {
-      continue
-    }
-
-    if (line.trim().startsWith("#")) {
-      if (line.trim().startsWith("##")) {
-        explanations.push({
-          code: line,
-          explanation: "Markdown heading level 2 - used to structure documentation with subsections.",
-          lineNumber: i + 1,
-        })
-      } else {
-        explanations.push({
-          code: line,
-          explanation: "Markdown heading level 1 - represents the main title or primary section heading in documentation.",
-          lineNumber: i + 1,
-        })
-      }
-      continue
-    }
-
-    let explanation = "This line executes as part of the program flow. It contributes to the overall logic and functionality of the code."
-
+    let explanation = "This line executes as part of the program flow."
     for (const [keyword, kwExplanation] of Object.entries(keywordExplanations)) {
-      if (line.match(new RegExp(`\\b${keyword}\\b`))) {
-        explanation = kwExplanation
-        break
-      }
+      if (line.match(new RegExp(`\\b${keyword}\\b`))) { explanation = kwExplanation; break }
     }
+    if (line.includes("=>")) explanation = "Arrow function expression with lexical 'this' binding."
+    if (line.match(/\.\w+\(/)) explanation = "Method call: invoking a function belonging to an object."
+    if (line.match(/\[\s*\]/)) explanation = "Array literal: creates a new array using bracket notation."
+    if (line.match(/{\s*}/)) explanation = "Object literal or code block using curly braces."
+    if (line.includes("=") && !line.includes("==") && !line.includes("===") && !line.includes("=>")) explanation = "Assignment operator."
+    if (line.includes("===") || line.includes("==")) explanation = "Comparison operator."
+    if (line.includes("Promise") || line.includes(".then(") || line.includes(".catch(")) explanation = "Promise handling for async operations."
+    if (line.includes("<") && line.includes(">") && !line.includes("=")) explanation = "JSX/TSX element for declarative UI."
 
-    if (line.includes("=>") || line.includes("=>")) {
-      explanation = "Arrow function expression: a concise syntax for writing functions. It has a lexical 'this' binding, meaning it inherits 'this' from the enclosing scope."
-    }
-
-    if (line.match(/\.\w+\(/)) {
-      explanation = "Method call: invoking a function that belongs to an object. The dot operator accesses properties and methods of an object."
-    }
-
-    if (line.match(/\[\s*\]/)) {
-      explanation = "Array literal: creates a new array using bracket notation. Arrays are ordered, zero-indexed collections that can hold mixed types."
-    }
-
-    if (line.match(/{\s*}/)) {
-      explanation = "Object literal or code block: curly braces define either an object with key-value pairs or a block of statements for control flow."
-    }
-
-    if (line.includes("=") && !line.includes("==") && !line.includes("===") && !line.includes("=>")) {
-      explanation = "Assignment operator: assigns the value on the right side to the variable or property on the left side."
-    }
-
-    if (line.includes("===") || line.includes("==")) {
-      explanation = "Comparison operator: compares two values. Triple equals (===) checks both value and type (strict equality), while double equals (==) performs type coercion."
-    }
-
-    if (line.includes("Promise") || line.includes(".then(") || line.includes(".catch(")) {
-      explanation = "Promise handling: Promises represent asynchronous operations. .then() handles resolution, .catch() handles rejection, enabling cleaner async code."
-    }
-
-    if (line.includes("<") && line.includes(">") && !line.includes("=")) {
-      explanation = "JSX/TSX element: React's syntax extension that looks like HTML but compiles to JavaScript function calls. Defines UI components declaratively."
-    }
-
-    explanations.push({
-      code: line,
-      explanation,
-      lineNumber: i + 1,
-    })
+    explanations.push({ code: line, explanation, lineNumber: i + 1 })
   }
 
-  return {
-    lines: explanations,
-    overview: `This ${language} code defines a program that processes data through a series of operations. The code demonstrates key programming concepts including variable declarations, control flow, function definitions, and data manipulation. It follows standard ${language} conventions and patterns for readability and maintainability.`,
-  }
+  const overview = `This ${language} code demonstrates key programming concepts including variable declarations, control flow, function definitions, and data manipulation. The code follows standard ${language} conventions.`
+  const complexity = estimateComplexity(code)
+  const suggestions = generateSuggestions(code)
+
+  return { lines: explanations, overview, complexity, suggestions }
 }
 
 export function CodeExplainer() {
   const [code, setCode] = React.useState("")
   const [language, setLanguage] = React.useState<(typeof LANGUAGES)[number]>("JavaScript")
   const [loading, setLoading] = React.useState(false)
-  const [explanation, setExplanation] = React.useState<{ lines: { code: string; explanation: string; lineNumber: number }[]; overview: string } | null>(null)
+  const [progress, setProgress] = React.useState(0)
+  const [explanation, setExplanation] = React.useState<{ lines: { code: string; explanation: string; lineNumber: number }[]; overview: string; complexity: { time: string; space: string; score: number }; suggestions: string[] } | null>(null)
   const [copied, setCopied] = React.useState(false)
 
   const handleExplain = React.useCallback(async () => {
@@ -181,7 +152,20 @@ export function CodeExplainer() {
     }
 
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 1500))
+    setProgress(0)
+
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        const next = prev + Math.random() * 20
+        return next >= 90 ? 90 : next
+      })
+    }, 200)
+
+    await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200))
+
+    clearInterval(interval)
+    setProgress(100)
+
     const result = generateExplanation(code, language)
     setExplanation(result)
     setLoading(false)
@@ -190,7 +174,7 @@ export function CodeExplainer() {
 
   const handleCopy = React.useCallback(async () => {
     if (!explanation) return
-    const text = `## Code Overview\n\n${explanation.overview}\n\n## Line-by-Line Explanation\n\n${explanation.lines.map(l => `Line ${l.lineNumber}: ${l.code.trim()}\n${l.explanation}\n`).join("\n")}`
+    const text = `## Code Overview\n\n${explanation.overview}\n\n## Complexity\n- Time: ${explanation.complexity.time}\n- Space: ${explanation.complexity.space}\n\n## Line-by-Line\n\n${explanation.lines.map(l => `Line ${l.lineNumber}: ${l.code.trim()}\n${l.explanation}\n`).join("\n")}`
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -213,7 +197,7 @@ export function CodeExplainer() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Code Explainer</h1>
-          <p className="text-sm text-muted-foreground">Understand code with AI explanations</p>
+          <p className="text-sm text-muted-foreground">Line-by-line explanation with complexity analysis</p>
         </div>
       </motion.div>
 
@@ -255,6 +239,10 @@ export function CodeExplainer() {
         >
           Explain Code
         </Button>
+
+        {loading && (
+          <ProgressBar value={progress} variant="gradient" showPercentage label="Analyzing code..." />
+        )}
       </Card>
 
       <AnimatePresence>
@@ -273,11 +261,7 @@ export function CodeExplainer() {
                   onClick={handleCopy}
                   className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
-                  {copied ? (
-                    <><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>
-                  ) : (
-                    <><Copy className="h-3.5 w-3.5" /> Copy</>
-                  )}
+                  {copied ? (<><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>) : (<><Copy className="h-3.5 w-3.5" /> Copy</>)}
                 </motion.button>
               </div>
               <div className="p-5">
@@ -285,11 +269,59 @@ export function CodeExplainer() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+              >
+                <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+                  <Gauge className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium text-foreground">Complexity</span>
+                </div>
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm text-muted-foreground">Time Complexity</span>
+                    <span className="text-sm font-mono font-bold text-primary">{explanation.complexity.time}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Space Complexity</span>
+                    <span className="text-sm font-mono font-bold text-primary">{explanation.complexity.space}</span>
+                  </div>
+                  <div className="mt-3 flex gap-1">
+                    {[0, 1, 2].map((level) => (
+                      <div key={level} className={cn("h-2 flex-1 rounded-full", level <= explanation.complexity.score ? "bg-primary" : "bg-muted")} />
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">Complexity level: {explanation.complexity.score === 0 ? "Low" : explanation.complexity.score === 1 ? "Medium" : "High"}</p>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+              >
+                <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+                  <Lightbulb className="h-4 w-4 text-amber-500" />
+                  <span className="text-sm font-medium text-foreground">Suggestions</span>
+                </div>
+                <div className="divide-y divide-border">
+                  {explanation.suggestions.slice(0, 4).map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 p-3 px-5">
+                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                      <span className="text-xs text-foreground/80">{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+
             <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
               <div className="border-b border-border px-5 py-3">
-                <span className="text-sm font-medium text-foreground">
-                  Line-by-Line Explanation ({explanation.lines.length} lines)
-                </span>
+                <span className="text-sm font-medium text-foreground">Line-by-Line ({explanation.lines.length} lines)</span>
               </div>
               <div className="divide-y divide-border">
                 {explanation.lines.map((item, i) => (
@@ -297,7 +329,7 @@ export function CodeExplainer() {
                     key={i}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.02 }}
+                    transition={{ delay: i * 0.01 }}
                     className="group"
                   >
                     <details className="group">
@@ -311,9 +343,7 @@ export function CodeExplainer() {
                         <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                       </summary>
                       <div className="border-t border-border bg-muted/20 px-5 py-3">
-                        <p className="text-sm text-foreground/80 leading-relaxed">
-                          {item.explanation}
-                        </p>
+                        <p className="text-sm text-foreground/80 leading-relaxed">{item.explanation}</p>
                       </div>
                     </details>
                   </motion.div>

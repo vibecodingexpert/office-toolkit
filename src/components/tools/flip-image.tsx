@@ -5,188 +5,73 @@ import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { cn } from "@/lib/utils/cn"
-import {
-  Upload,
-  Download,
-  FlipHorizontal,
-  FlipVertical,
-  RefreshCw,
-  Image,
-} from "lucide-react"
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
+import { Upload, Download, FlipHorizontal, FlipVertical, ImageIcon, RefreshCw, ZoomIn, ZoomOut } from "lucide-react"
 
 export function FlipImage() {
-  const [file, setFile] = React.useState<File | null>(null)
-  const [preview, setPreview] = React.useState<string | null>(null)
-  const [resultUrl, setResultUrl] = React.useState<string | null>(null)
-  const [flipH, setFlipH] = React.useState(false)
-  const [flipV, setFlipV] = React.useState(false)
-  const [imgDims, setImgDims] = React.useState({ w: 0, h: 0 })
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const [image, setImage] = React.useState<string | null>(null)
+  const [result, setResult] = React.useState<string | null>(null)
+  const [hFlip, setHFlip] = React.useState(false)
+  const [vFlip, setVFlip] = React.useState(false)
+  const [zoom, setZoom] = React.useState(1)
+  const [format, setFormat] = React.useState("png")
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setFile(f)
-    setResultUrl(null)
-    setFlipH(false); setFlipV(false)
-    const url = URL.createObjectURL(f)
-    setPreview(url)
-    const img = new window.Image()
-    img.onload = () => setImgDims({ w: img.naturalWidth, h: img.naturalHeight })
-    img.src = url
-  }, [])
+  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) { const r = new FileReader(); r.onload = (ev) => { setImage(ev.target?.result as string); setResult(null) }; r.readAsDataURL(file) }
+  }
 
-  const processFlip = React.useCallback(async (h: boolean, v: boolean) => {
-    if (!preview) return
-    const img = new window.Image()
-    img.src = preview
-    await new Promise((r) => { img.onload = r })
-    const canvas = document.createElement("canvas")
-    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight
+  const processFlip = () => {
+    if (!image) { toast.error("Upload an image first"); return }
+    const canvas = canvasRef.current
+    if (!canvas) return
     const ctx = canvas.getContext("2d")
-    if (!ctx) { toast.error("Canvas not available"); return }
-    ctx.imageSmoothingEnabled = true
-    ctx.translate(h ? canvas.width : 0, v ? canvas.height : 0)
-    ctx.scale(h ? -1 : 1, v ? -1 : 1)
-    ctx.drawImage(img, 0, 0)
-    canvas.toBlob((blob) => {
-      if (!blob) { toast.error("Failed to flip"); return }
-      const url = URL.createObjectURL(blob)
-      setResultUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url })
-    }, "image/png")
-  }, [preview])
+    if (!ctx) return
+    const img = new Image(1, 1)
+    img.onload = () => {
+      canvas.width = img.width; canvas.height = img.height
+      ctx.save()
+      ctx.translate(hFlip ? canvas.width : 0, vFlip ? canvas.height : 0)
+      ctx.scale(hFlip ? -1 : 1, vFlip ? -1 : 1)
+      ctx.drawImage(img, 0, 0)
+      ctx.restore()
+      setResult(canvas.toDataURL(format === "jpg" ? "image/jpeg" : "image/png"))
+      toast.success("Image flipped")
+    }
+    img.src = image
+  }
 
-  React.useEffect(() => {
-    if (preview) processFlip(flipH, flipV)
-  }, [flipH, flipV, preview, processFlip])
+  React.useEffect(() => { if (image) processFlip() }, [hFlip, vFlip])
 
-  const toggleFlipH = React.useCallback(() => setFlipH((f) => !f), [])
-  const toggleFlipV = React.useCallback(() => setFlipV((f) => !f), [])
-  const applyBoth = React.useCallback(() => {
-    setFlipH(true); setFlipV(true)
-  }, [])
-
-  const handleDownload = React.useCallback(() => {
-    if (!resultUrl) return
-    const a = document.createElement("a")
-    a.href = resultUrl
-    a.download = (file?.name?.replace(/\.[^/.]+$/, "") || "image") + "_flipped.png"
-    a.click()
-  }, [resultUrl, file])
-
-  const handleReset = React.useCallback(() => {
-    if (preview) URL.revokeObjectURL(preview)
-    if (resultUrl) URL.revokeObjectURL(resultUrl)
-    setFile(null); setPreview(null); setResultUrl(null)
-    setFlipH(false); setFlipV(false)
-  }, [preview, resultUrl])
+  const handleDownload = () => {
+    if (!result) return
+    const ext = format === "jpg" ? "jpg" : "png"
+    const link = document.createElement("a"); link.download = `flipped.${ext}`; link.href = result; link.click()
+    toast.success("Image downloaded")
+  }
 
   return (
-    <Card className="space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <FlipHorizontal className="h-5 w-5 text-primary" />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10"><FlipHorizontal className="h-6 w-6 text-teal-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Flip Image</h1><p className="text-sm text-muted-foreground">Flip images horizontally or vertically</p></div></div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-sm"><ZoomOut className="h-3 w-3 text-muted-foreground" /><input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-16" /><ZoomIn className="h-3 w-3 text-muted-foreground" /></div>
+          <select value={format} onChange={(e) => setFormat(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm"><option value="png">PNG</option><option value="jpg">JPEG</option></select>
+          <label className="cursor-pointer rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent"><Upload className="mr-1 inline h-4 w-4" />Upload<input type="file" accept="image/*" onChange={handleImage} className="hidden" /></label>
+          {result && <Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /></Button>}
         </div>
-        <div>
-          <h2 className="text-lg font-semibold">Flip Image</h2>
-          <p className="text-sm text-muted-foreground">Flip images horizontally or vertically</p>
-        </div>
+      </motion.div>
+
+      {image && <div className="flex flex-wrap gap-2">
+        <button onClick={() => setHFlip(!hFlip)} className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm ${hFlip ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}><FlipHorizontal className="h-4 w-4" /> Flip Horizontal</button>
+        <button onClick={() => setVFlip(!vFlip)} className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm ${vFlip ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}><FlipVertical className="h-4 w-4" /> Flip Vertical</button>
+      </div>}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {image && <Card className="flex items-center justify-center p-4"><div className="overflow-auto rounded-lg border border-border" style={{ maxHeight: 500 }}><img src={image} alt="Original" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }} /></div></Card>}
+        {result && <Card className="flex items-center justify-center p-4"><div className="overflow-auto rounded-lg border border-border" style={{ maxHeight: 500 }}><img src={result} alt="Flipped" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }} /></div></Card>}
       </div>
-
-      {!preview ? (
-        <label className="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-border bg-background p-8 text-center transition-all hover:border-primary/50 hover:bg-primary/[0.02]">
-          <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 shadow-sm ring-1 ring-primary/10">
-            <Upload className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">Drag & drop or <span className="text-primary underline underline-offset-2">browse</span></p>
-            <p className="mt-1 text-xs text-muted-foreground">Supports all image formats</p>
-          </div>
-        </label>
-      ) : (
-        <div className="space-y-6">
-          <div className="relative overflow-hidden rounded-xl border border-border bg-muted/30">
-            {resultUrl ? (
-              <img src={resultUrl} alt="Preview" className="mx-auto max-h-64 object-contain" />
-            ) : (
-              <img src={preview} alt="Original" className="mx-auto max-h-64 object-contain" />
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 rounded-xl bg-muted/20 p-4">
-            <div>
-              <span className="text-xs text-muted-foreground">Dimensions</span>
-              <p className="text-sm font-medium text-foreground">{imgDims.w} x {imgDims.h} px</p>
-            </div>
-            <div>
-              <span className="text-xs text-muted-foreground">File Size</span>
-              <p className="text-sm font-medium text-foreground">{file ? formatSize(file.size) : "-"}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={toggleFlipH}
-              className={cn(
-                "flex flex-1 items-center justify-center gap-2 rounded-xl border px-6 py-4 text-sm font-medium transition-all",
-                flipH ? "border-primary/50 bg-primary/5 text-primary" : "border-border bg-background text-foreground hover:border-primary/30"
-              )}
-            >
-              <FlipHorizontal className="h-5 w-5" /> Flip Horizontal
-            </button>
-            <button
-              onClick={toggleFlipV}
-              className={cn(
-                "flex flex-1 items-center justify-center gap-2 rounded-xl border px-6 py-4 text-sm font-medium transition-all",
-                flipV ? "border-primary/50 bg-primary/5 text-primary" : "border-border bg-background text-foreground hover:border-primary/30"
-              )}
-            >
-              <FlipVertical className="h-5 w-5" /> Flip Vertical
-            </button>
-          </div>
-
-          <button
-            onClick={applyBoth}
-            className="w-full rounded-xl border border-dashed border-border bg-background px-4 py-3 text-sm font-medium text-muted-foreground hover:border-primary/30 hover:text-foreground transition-all"
-          >
-            Flip Both (Horizontal + Vertical)
-          </button>
-
-          <div className="flex flex-wrap gap-3">
-            {resultUrl && (
-              <Button variant="outline" onClick={handleDownload} icon={<Download className="h-4 w-4" />}>
-                Download
-              </Button>
-            )}
-            <Button variant="ghost" onClick={handleReset} icon={<RefreshCw className="h-4 w-4" />}>
-              New Image
-            </Button>
-          </div>
-
-          {resultUrl && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="overflow-hidden rounded-xl border border-border"
-            >
-              <div className="flex items-center gap-1.5 border-b border-border bg-muted/30 px-4 py-2">
-                <div className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
-                <div className="h-2.5 w-2.5 rounded-full bg-amber-500/80" />
-                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-                <span className="ml-2 text-xs text-muted-foreground">Flipped Result</span>
-              </div>
-              <img src={resultUrl} alt="Flipped" className="mx-auto max-h-64 object-contain p-4" />
-            </motion.div>
-          )}
-        </div>
-      )}
-    </Card>
+      <canvas ref={canvasRef} className="hidden" />
+    </div>
   )
 }

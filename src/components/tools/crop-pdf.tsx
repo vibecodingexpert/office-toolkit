@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, Crop,
 } from "lucide-react"
+import { cropPDFPages } from "@/lib/utils/pdf-utils"
 
 interface FileInfo {
   id: string
@@ -25,25 +26,18 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-const cropPresets = [
-  { label: "Custom", top: 0, bottom: 0, left: 0, right: 0 },
-  { label: "Business Card", top: 5, bottom: 5, left: 5, right: 5 },
-  { label: "Remove Header/Footer", top: 20, bottom: 20, left: 0, right: 0 },
-  { label: "Narrow Margins", top: 10, bottom: 10, left: 10, right: 10 },
-  { label: "Wide Margins", top: 25, bottom: 25, left: 25, right: 25 },
-]
-
 export function CropPdf() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [top, setTop] = React.useState(0)
-  const [bottom, setBottom] = React.useState(0)
-  const [left, setLeft] = React.useState(0)
-  const [right, setRight] = React.useState(0)
-  const [activePreset, setActivePreset] = React.useState(0)
+  const [x, setX] = React.useState(0)
+  const [y, setY] = React.useState(0)
+  const [width, setWidth] = React.useState(100)
+  const [height, setHeight] = React.useState(100)
+  const [pageW, setPageW] = React.useState(612)
+  const [pageH, setPageH] = React.useState(792)
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
     setFileInfo({
@@ -55,6 +49,18 @@ export function CropPdf() {
     })
     setProgress(0)
     setIsProcessing(false)
+
+    const { PDFDocument } = await import("pdf-lib")
+    const bytes = await f.arrayBuffer()
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+    const firstPage = pdf.getPage(0)
+    const { width: pw, height: ph } = firstPage.getSize()
+    setPageW(pw)
+    setPageH(ph)
+    setWidth(pw)
+    setHeight(ph)
+    setX(0)
+    setY(0)
   }, [])
 
   const removeFile = React.useCallback(() => {
@@ -64,40 +70,34 @@ export function CropPdf() {
     setIsProcessing(false)
   }, [fileInfo])
 
-  const applyPreset = React.useCallback((index: number) => {
-    const preset = cropPresets[index]
-    setActivePreset(index)
-    setTop(preset.top)
-    setBottom(preset.bottom)
-    setLeft(preset.left)
-    setRight(preset.right)
-  }, [])
-
   const process = React.useCallback(async () => {
     if (!fileInfo) return
-    if (top === 0 && bottom === 0 && left === 0 && right === 0) {
-      toast.error("Please set crop margins")
+    if (width <= 0 || height <= 0) {
+      toast.error("Width and height must be greater than 0")
       return
     }
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const reduction = 1 - (top + bottom + left + right) / 400
-    const blob = new Blob([fileInfo.file], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: Math.round(fileInfo.file.size * Math.max(0.3, reduction)) } : prev)
-    setIsProcessing(false)
-    toast.success("PDF cropped successfully!")
-  }, [fileInfo, top, bottom, left, right])
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const blob = await cropPDFPages(fileInfo.file, { x, y, width, height })
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
+      toast.success("PDF cropped successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to crop PDF. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [fileInfo, x, y, width, height])
 
   const download = React.useCallback(() => {
     if (!fileInfo?.resultUrl) return
@@ -115,7 +115,7 @@ export function CropPdf() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Crop PDF</h2>
-          <p className="text-sm text-muted-foreground">Crop PDF pages by adjusting margins</p>
+          <p className="text-sm text-muted-foreground">Crop PDF pages by specifying coordinates</p>
         </div>
       </div>
 
@@ -147,7 +147,7 @@ export function CropPdf() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 text-xs text-muted-foreground">
-                <span>Size: {formatSize(fileInfo.file.size)}</span>
+                <span>Size: {formatSize(fileInfo.file.size)}</span> · <span>Page: {pageW}×{pageH}</span>
               </div>
             </div>
             {fileInfo.status === "idle" && (
@@ -163,76 +163,66 @@ export function CropPdf() {
           </motion.div>
 
           {fileInfo.status === "idle" && !isProcessing && (
-            <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Presets</label>
-                <div className="flex flex-wrap gap-2">
-                  {cropPresets.map((preset, i) => (
-                    <button
-                      key={i}
-                      onClick={() => applyPreset(i)}
-                      className={cn(
-                        "rounded-lg border px-3 py-1.5 text-xs transition-all",
-                        activePreset === i
-                          ? "border-primary bg-primary/10 text-primary font-medium"
-                          : "border-border bg-background text-muted-foreground hover:border-primary/50"
-                      )}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
+                <label className="text-sm font-medium text-foreground">X ({x})</label>
+                <input
+                  type="range" min={0} max={pageW}
+                  value={x}
+                  onChange={(e) => setX(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+                <input
+                  type="number" min={0} max={pageW}
+                  value={x}
+                  onChange={(e) => setX(Math.max(0, Math.min(pageW, Number(e.target.value))))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Top Margin ({top} mm)</label>
-                  <input
-                    type="range" min={0} max={50}
-                    value={top}
-                    onChange={(e) => { setTop(Number(e.target.value)); setActivePreset(0) }}
-                    className="w-full accent-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Bottom Margin ({bottom} mm)</label>
-                  <input
-                    type="range" min={0} max={50}
-                    value={bottom}
-                    onChange={(e) => { setBottom(Number(e.target.value)); setActivePreset(0) }}
-                    className="w-full accent-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Left Margin ({left} mm)</label>
-                  <input
-                    type="range" min={0} max={50}
-                    value={left}
-                    onChange={(e) => { setLeft(Number(e.target.value)); setActivePreset(0) }}
-                    className="w-full accent-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Right Margin ({right} mm)</label>
-                  <input
-                    type="range" min={0} max={50}
-                    value={right}
-                    onChange={(e) => { setRight(Number(e.target.value)); setActivePreset(0) }}
-                    className="w-full accent-primary"
-                  />
-                </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Y ({y})</label>
+                <input
+                  type="range" min={0} max={pageH}
+                  value={y}
+                  onChange={(e) => setY(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+                <input
+                  type="number" min={0} max={pageH}
+                  value={y}
+                  onChange={(e) => setY(Math.max(0, Math.min(pageH, Number(e.target.value))))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
               </div>
-              <div className="flex items-center justify-center">
-                <div className="relative h-40 w-32 rounded-lg border-2 border-border bg-white">
-                  <div
-                    className="absolute bg-primary/20 border border-primary"
-                    style={{
-                      top: `${top}%`,
-                      bottom: `${bottom}%`,
-                      left: `${left}%`,
-                      right: `${right}%`,
-                    }}
-                  />
-                </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Width ({width})</label>
+                <input
+                  type="range" min={1} max={pageW}
+                  value={width}
+                  onChange={(e) => setWidth(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+                <input
+                  type="number" min={1} max={pageW}
+                  value={width}
+                  onChange={(e) => setWidth(Math.max(1, Math.min(pageW, Number(e.target.value))))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Height ({height})</label>
+                <input
+                  type="range" min={1} max={pageH}
+                  value={height}
+                  onChange={(e) => setHeight(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+                <input
+                  type="number" min={1} max={pageH}
+                  value={height}
+                  onChange={(e) => setHeight(Math.max(1, Math.min(pageH, Number(e.target.value))))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
               </div>
             </div>
           )}

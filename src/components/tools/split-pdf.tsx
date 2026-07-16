@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, Scissors,
 } from "lucide-react"
+import { splitPDF } from "@/lib/utils/pdf-utils"
 
 interface FileInfo {
   id: string
   file: File
-  pages: number
   status: "idle" | "processing" | "done" | "error"
 }
 
@@ -22,10 +22,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
-function simulatePages(size: number): number {
-  return Math.max(2, Math.floor(size / 50000))
 }
 
 export function SplitPdf() {
@@ -37,18 +33,38 @@ export function SplitPdf() {
   const [selectedPages, setSelectedPages] = React.useState<number[]>([])
   const [splitUrl, setSplitUrl] = React.useState<string | null>(null)
   const [splitSize, setSplitSize] = React.useState(0)
+  const [totalPages, setTotalPages] = React.useState(0)
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const parseRanges = React.useCallback((input: string): { start: number; end: number }[] => {
+    const parts = input.split(",").map((s) => s.trim())
+    const ranges: { start: number; end: number }[] = []
+    for (const part of parts) {
+      if (part.includes("-")) {
+        const [s, e] = part.split("-").map(Number)
+        if (!isNaN(s) && !isNaN(e)) ranges.push({ start: s, end: e })
+      } else {
+        const n = Number(part)
+        if (!isNaN(n)) ranges.push({ start: n, end: n })
+      }
+    }
+    return ranges
+  }, [])
+
+  const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    const pages = simulatePages(f.size)
-    setFileInfo({ id: crypto.randomUUID(), file: f, pages, status: "idle" })
+    setFileInfo({ id: crypto.randomUUID(), file: f, status: "idle" })
     setProgress(0)
     setIsProcessing(false)
     setSelectedPages([])
     setPageRange("")
     setSplitUrl(null)
     setSplitSize(0)
+
+    const { PDFDocument } = await import("pdf-lib")
+    const bytes = await f.arrayBuffer()
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+    setTotalPages(pdf.getPageCount())
   }, [])
 
   const removeFile = React.useCallback(() => {
@@ -57,6 +73,7 @@ export function SplitPdf() {
     setProgress(0)
     setIsProcessing(false)
     setSplitUrl(null)
+    setTotalPages(0)
   }, [splitUrl])
 
   const togglePage = React.useCallback((page: number) => {
@@ -92,23 +109,41 @@ export function SplitPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      let blobs: Blob[]
+      if (splitMode === "range") {
+        const ranges = parseRanges(pageRange)
+        blobs = await splitPDF(fileInfo.file, ranges)
+      } else {
+        blobs = await splitPDF(fileInfo.file, selectedPages.map((p) => ({ start: p, end: p })))
+      }
+
+      clearInterval(progressInterval)
+      setProgress(100)
+
+      const { default: JSZip } = await import("jszip")
+      const zip = new JSZip()
+      blobs.forEach((blob, i) => {
+        zip.file(`split_${i + 1}.pdf`, blob)
       })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2500 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([fileInfo.file], { type: "application/zip" })
-    const url = URL.createObjectURL(blob)
-    setSplitSize(Math.round(fileInfo.file.size * (0.4 + Math.random() * 0.3)))
-    setSplitUrl(url)
-    setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
-    setIsProcessing(false)
-    toast.success("PDF split successfully!")
-  }, [fileInfo, splitMode, pageRange, validateRange, selectedPages])
+      const zipBlob = await zip.generateAsync({ type: "blob" })
+      const url = URL.createObjectURL(zipBlob)
+      setSplitSize(zipBlob.size)
+      setSplitUrl(url)
+      setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+      toast.success("PDF split successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to split PDF. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [fileInfo, splitMode, pageRange, validateRange, selectedPages, parseRanges])
 
   const download = React.useCallback(() => {
     if (!splitUrl) return
@@ -118,7 +153,7 @@ export function SplitPdf() {
     a.click()
   }, [splitUrl, fileInfo])
 
-  const pageNumbers = fileInfo ? Array.from({ length: fileInfo.pages }, (_, i) => i + 1) : []
+  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
 
   return (
     <Card className="space-y-6 p-6">
@@ -160,7 +195,7 @@ export function SplitPdf() {
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
-                <span>Pages: {fileInfo.pages}</span>
+                <span>Pages: {totalPages}</span>
               </div>
             </div>
             <button onClick={removeFile} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">

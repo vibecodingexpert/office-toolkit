@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, ArrowUp, ArrowDown, Shuffle,
 } from "lucide-react"
+import { reorderPagesInPDF } from "@/lib/utils/pdf-utils"
 
 interface FileInfo {
   id: string
@@ -26,29 +27,29 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function simulatePages(size: number): number {
-  return Math.max(3, Math.floor(size / 50000))
-}
-
 export function ReorderPages() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [pageOrder, setPageOrder] = React.useState<number[]>([])
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    const pages = simulatePages(f.size)
+    const { PDFDocument } = await import("pdf-lib")
+    const bytes = await f.arrayBuffer()
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+    const totalPages = pdf.getPageCount()
+
     setFileInfo({
       id: crypto.randomUUID(),
       file: f,
-      pages,
+      pages: totalPages,
       status: "idle",
       resultUrl: null,
       resultSize: 0,
     })
-    setPageOrder(Array.from({ length: pages }, (_, i) => i + 1))
+    setPageOrder(Array.from({ length: totalPages }, (_, i) => i + 1))
     setProgress(0)
     setIsProcessing(false)
   }, [])
@@ -92,21 +93,25 @@ export function ReorderPages() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([fileInfo.file], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: fileInfo.file.size } : prev)
-    setIsProcessing(false)
-    toast.success("Pages reordered successfully!")
-  }, [fileInfo, isOriginalOrder])
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const blob = await reorderPagesInPDF(fileInfo.file, pageOrder)
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
+      toast.success("Pages reordered successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to reorder pages. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [fileInfo, pageOrder, isOriginalOrder])
 
   const download = React.useCallback(() => {
     if (!fileInfo?.resultUrl) return

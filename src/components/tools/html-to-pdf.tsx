@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
+import html2canvas from "html2canvas"
+import { jsPDF } from "jspdf"
 import {
   Upload, Download, FileText, Check, X, FileDown, Code, Eye, EyeOff,
 } from "lucide-react"
@@ -21,8 +23,8 @@ const pageSizes = ["A4", "Letter", "Legal"]
 
 const defaultHtml = `<html>
 <head><style>
-body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
-h1 { color: #6366f1; }
+body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; color: #1e293b; }
+h1 { color: #0d9488; border-bottom: 2px solid #0d9488; padding-bottom: 8px; }
 p { margin-bottom: 16px; }
 </style></head>
 <body>
@@ -41,6 +43,7 @@ export function HtmlToPdf() {
   const [resultSize, setResultSize] = React.useState(0)
   const [showPreview, setShowPreview] = React.useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const contentRef = React.useRef<HTMLDivElement>(null)
 
   const handleHtmlFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -60,23 +63,63 @@ export function HtmlToPdf() {
     }
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const size = Math.round(htmlInput.length * 1.5 + Math.random() * 5000)
-    const blob = new Blob([htmlInput], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setResultUrl(url)
-    setResultSize(size)
+    try {
+      const sizeMap: Record<string, [string, string]> = {
+        A4: ["a4", "mm"],
+        Letter: ["letter", "mm"],
+        Legal: ["legal", "mm"],
+      }
+      const [format, unit] = sizeMap[pageSize] || sizeMap.A4
+      const pdf = new jsPDF("p", unit as "mm", format as "a4" | "letter" | "legal")
+
+      const renderDiv = document.createElement("div")
+      renderDiv.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;padding:40px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;background:white;color:black;"
+      renderDiv.innerHTML = htmlInput
+      document.body.appendChild(renderDiv)
+
+      let pageCount = 0
+      try {
+        const canvas = await html2canvas(renderDiv, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: "#ffffff",
+          width: renderDiv.scrollWidth,
+          height: renderDiv.scrollHeight,
+        })
+
+        const imgData = canvas.toDataURL("image/jpeg", 0.95)
+        const pageWidth = pdf.internal.pageSize.getWidth()
+        const pageHeight = pdf.internal.pageSize.getHeight()
+        const imgWidth = pageWidth - 20
+        const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+        let heightLeft = imgHeight
+        let position = 0
+
+        while (heightLeft > 0) {
+          if (pageCount > 0) pdf.addPage()
+          setProgress(Math.min(95, Math.round(((pageCount + 1) / Math.ceil(imgHeight / pageHeight)) * 100)))
+          pdf.addImage(imgData, "JPEG", 10, 10 + position, imgWidth, imgHeight)
+          heightLeft -= pageHeight
+          position -= pageHeight
+          pageCount++
+        }
+      } finally {
+        document.body.removeChild(renderDiv)
+      }
+
+      setProgress(100)
+      const pdfBlob = pdf.output("blob")
+      const url = URL.createObjectURL(pdfBlob)
+      setResultUrl(url)
+      setResultSize(pdfBlob.size)
+      toast.success(`HTML converted to PDF (${pageCount} page${pageCount !== 1 ? "s" : ""})!`)
+    } catch (err) {
+      toast.error("Failed to render HTML to PDF. Check your HTML for errors.")
+    }
     setIsProcessing(false)
-    toast.success("HTML converted to PDF successfully!")
-  }, [htmlInput])
+  }, [htmlInput, pageSize])
 
   const download = React.useCallback(() => {
     if (!resultUrl) return
@@ -156,7 +199,7 @@ export function HtmlToPdf() {
 
           {showPreview && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Preview</label>
+              <label className="text-sm font-medium text-foreground">Live Preview</label>
               <div className="rounded-xl border border-border bg-white overflow-hidden" style={{ height: "430px" }}>
                 <iframe ref={iframeRef} className="h-full w-full" title="HTML Preview" sandbox="allow-same-origin" />
               </div>
@@ -168,7 +211,7 @@ export function HtmlToPdf() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-              Converting HTML to PDF ({pageSize})...
+              Rendering HTML to PDF ({pageSize})...
             </div>
             <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
           </div>

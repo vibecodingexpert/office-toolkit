@@ -131,7 +131,7 @@ export function AiEnhance() {
     setLoading(true)
     await new Promise((r) => setTimeout(r, 300))
     try {
-      const img = new window.Image()
+      const img = new window.Image(1, 1)
       img.src = preview
       await new Promise((r) => { img.onload = r })
       const canvas = document.createElement("canvas")

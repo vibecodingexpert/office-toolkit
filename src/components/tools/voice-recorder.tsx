@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils/cn"
 import {
   Mic, Square, Play, Pause, Download, Trash2, Check, Music,
 } from "lucide-react"
+import { convertAudio, getFFmpeg } from "@/lib/utils/media-utils"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -22,6 +23,15 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60)
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
 }
+
+type Format = "mp3" | "wav" | "ogg" | "aac"
+
+const formatOptions: { value: Format; label: string }[] = [
+  { value: "mp3", label: "MP3" },
+  { value: "wav", label: "WAV" },
+  { value: "ogg", label: "OGG" },
+  { value: "aac", label: "AAC" },
+]
 
 interface Recording {
   id: string
@@ -39,7 +49,8 @@ export function VoiceRecorder() {
   const [recordingTime, setRecordingTime] = React.useState(0)
   const [activeRecordingId, setActiveRecordingId] = React.useState<string | null>(null)
   const [isPlaying, setIsPlaying] = React.useState(false)
-  const [outputFormat, setOutputFormat] = React.useState("mp3")
+  const [outputFormat, setOutputFormat] = React.useState<Format>("mp3")
+  const [ffmpegLoading, setFfmpegLoading] = React.useState(true)
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const chunksRef = React.useRef<Blob[]>([])
@@ -48,6 +59,12 @@ export function VoiceRecorder() {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const analyserRef = React.useRef<AnalyserNode | null>(null)
   const animationRef = React.useRef<number>(0)
+
+  React.useEffect(() => {
+    getFFmpeg().then(() => setFfmpegLoading(false)).catch(() => {
+      setFfmpegLoading(false)
+    })
+  }, [])
 
   const drawWaveform = React.useCallback(() => {
     const analyser = analyserRef.current
@@ -204,12 +221,20 @@ export function VoiceRecorder() {
     }
   }, [activeRecordingId])
 
-  const downloadRecording = React.useCallback((rec: Recording) => {
-    const a = document.createElement("a")
-    a.href = rec.url
-    const ext = outputFormat === "mp3" ? "mp3" : "wav"
-    a.download = `recording_${rec.timestamp.toISOString().slice(0, 19).replace(/[:-]/g, "")}.${ext}`
-    a.click()
+  const downloadRecording = React.useCallback(async (rec: Recording) => {
+    try {
+      const blob = await convertAudio(new File([rec.blob], `recording.${outputFormat}`, { type: rec.blob.type }), outputFormat)
+      const a = document.createElement("a")
+      a.href = URL.createObjectURL(blob)
+      a.download = `recording_${rec.timestamp.toISOString().slice(0, 19).replace(/[:-]/g, "")}.${outputFormat}`
+      a.click()
+    } catch {
+      const a = document.createElement("a")
+      a.href = rec.url
+      const ext = outputFormat
+      a.download = `recording_${rec.timestamp.toISOString().slice(0, 19).replace(/[:-]/g, "")}.${ext}`
+      a.click()
+    }
   }, [outputFormat])
 
   const clearAll = React.useCallback(() => {
@@ -244,6 +269,13 @@ export function VoiceRecorder() {
           <p className="text-sm text-muted-foreground">Record audio directly in your browser</p>
         </div>
       </div>
+
+      {ffmpegLoading && (
+        <div className="flex items-center gap-2 rounded-xl bg-muted/50 p-3 text-sm text-muted-foreground">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-pink-500 border-t-transparent" />
+          Initializing audio converter...
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <canvas ref={canvasRef} className="h-32 w-full bg-card" />
@@ -307,21 +339,21 @@ export function VoiceRecorder() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="space-y-2">
         <label className="text-sm font-medium text-foreground">Download Format</label>
         <div className="flex gap-2">
-          {["mp3", "wav"].map((fmt) => (
+          {formatOptions.map((fmt) => (
             <button
-              key={fmt}
-              onClick={() => setOutputFormat(fmt)}
+              key={fmt.value}
+              onClick={() => setOutputFormat(fmt.value)}
               className={cn(
-                "rounded-lg border px-4 py-1.5 text-xs font-medium transition-all",
-                outputFormat === fmt
+                "flex-1 rounded-lg border px-4 py-2 text-xs font-medium transition-all",
+                outputFormat === fmt.value
                   ? "border-pink-500/50 bg-pink-500/10 text-pink-500"
                   : "border-border text-muted-foreground hover:border-pink-500/30"
               )}
             >
-              {fmt.toUpperCase()}
+              {fmt.label}
             </button>
           ))}
         </div>
@@ -348,10 +380,7 @@ export function VoiceRecorder() {
                   "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
                   activeRecordingId === rec.id && isPlaying ? "bg-pink-500/20" : "bg-pink-500/10"
                 )}>
-                  <Music className={cn(
-                    "h-5 w-5",
-                    activeRecordingId === rec.id && isPlaying ? "text-pink-500" : "text-pink-500"
-                  )} />
+                  <Music className="h-5 w-5 text-pink-500" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">

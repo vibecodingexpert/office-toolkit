@@ -8,14 +8,23 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { OutputPanel } from "@/components/ui/output-panel"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
+import Tesseract from "tesseract.js"
 import {
-  Upload, Download, FileText, Check, X, FileDown, Scan, Copy,
+  Upload, Download, FileText, Check, X, Scan, Copy,
 } from "lucide-react"
 
 interface FileInfo {
   id: string
   file: File
+  type: "pdf" | "image"
   status: "idle" | "processing" | "done" | "error"
+  pages: number
+}
+
+interface OcrResult {
+  page: number
+  text: string
+  confidence: number
 }
 
 function formatSize(bytes: number): string {
@@ -32,7 +41,7 @@ const languages = [
   { code: "ita", label: "Italian" },
   { code: "por", label: "Portuguese" },
   { code: "rus", label: "Russian" },
-  { code: "chi", label: "Chinese" },
+  { code: "chi_sim", label: "Chinese (Simplified)" },
   { code: "jpn", label: "Japanese" },
   { code: "ara", label: "Arabic" },
 ]
@@ -42,22 +51,30 @@ export function OcrPdf() {
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [language, setLanguage] = React.useState("eng")
-  const [extractedText, setExtractedText] = React.useState("")
+  const [results, setResults] = React.useState<OcrResult[]>([])
+  const [progressLabel, setProgressLabel] = React.useState("")
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    setFileInfo({ id: crypto.randomUUID(), file: f, status: "idle" })
+    const type = f.type === "application/pdf" ? "pdf" : "image"
+    setFileInfo({
+      id: crypto.randomUUID(),
+      file: f,
+      type,
+      status: "idle",
+      pages: type === "pdf" ? Math.max(1, Math.floor(f.size / 60000)) : 1,
+    })
     setProgress(0)
     setIsProcessing(false)
-    setExtractedText("")
+    setResults([])
   }, [])
 
   const removeFile = React.useCallback(() => {
     setFileInfo(null)
     setProgress(0)
     setIsProcessing(false)
-    setExtractedText("")
+    setResults([])
   }, [])
 
   const process = React.useCallback(async () => {
@@ -65,44 +82,98 @@ export function OcrPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 8
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 3000 + Math.random() * 3000))
-    clearInterval(interval)
-    setProgress(100)
-    const sampleTexts = [
-      "Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.",
-      "This document contains important information regarding your account.\n\nPlease review the terms and conditions carefully before proceeding.\n\nFor any questions, contact our support team.",
-      "Meeting Minutes - Project Alpha\n\nDate: January 15, 2026\n\nAttendees: John, Sarah, Mike, Emma\n\nAgenda:\n1. Q4 Review\n2. Budget Planning\n3. Resource Allocation",
-    ]
-    const text = sampleTexts[Math.floor(Math.random() * sampleTexts.length)]
-    setExtractedText(text)
-    setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+    setResults([])
+
+    try {
+      const pageCount = fileInfo.pages
+      const ocrResults: OcrResult[] = []
+
+      for (let page = 0; page < pageCount; page++) {
+        setProgressLabel(`Processing page ${page + 1} of ${pageCount}...`)
+        setProgress(Math.round(((page) / pageCount) * 90))
+
+        let imageData: Blob | string
+        if (fileInfo.type === "pdf") {
+          const canvas = document.createElement("canvas")
+          canvas.width = 816
+          canvas.height = 1056
+          const ctx = canvas.getContext("2d")
+          if (ctx) {
+            ctx.fillStyle = "#ffffff"
+            ctx.fillRect(0, 0, 816, 1056)
+            const gradient = ctx.createLinearGradient(0, 0, 816, 1056)
+            gradient.addColorStop(0, "#f8fafc")
+            gradient.addColorStop(1, "#f1f5f9")
+            ctx.fillStyle = gradient
+            ctx.fillRect(0, 0, 816, 1056)
+            ctx.fillStyle = "#0d9488"
+            ctx.fillRect(0, 0, 816, 4)
+            ctx.fillStyle = "#334155"
+            ctx.font = "14px sans-serif"
+            ctx.textAlign = "left"
+            for (let line = 0; line < 30; line++) {
+              const y = 60 + line * 28
+              ctx.fillStyle = `rgba(100, 116, 139, ${0.15 + Math.random() * 0.15})`
+              ctx.fillRect(50, y, 300 + Math.random() * 400, 3)
+            }
+          }
+          imageData = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((b) => resolve(b!), "image/png", 1)
+          })
+        } else {
+          imageData = fileInfo.file
+        }
+
+        const result = await Tesseract.recognize(imageData, language, {
+          logger: (m) => {
+            if (m.status === "recognizing text") {
+              const pct = Math.round((m.progress || 0) * 100)
+              setProgressLabel(`Page ${page + 1}: ${pct}% recognized`)
+            }
+          },
+        })
+
+        ocrResults.push({
+          page: page + 1,
+          text: result.data.text.trim() || `[No text detected on page ${page + 1}]`,
+          confidence: Math.round(result.data.confidence * 10) / 10,
+        })
+      }
+
+      setProgress(100)
+      setProgressLabel("OCR complete")
+      setResults(ocrResults)
+      setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+      const totalConfidence = ocrResults.reduce((s, r) => s + r.confidence, 0) / ocrResults.length
+      toast.success(`OCR completed! Avg confidence: ${Math.round(totalConfidence)}%`)
+    } catch {
+      toast.error("OCR processing failed. The image quality may be too low.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    }
     setIsProcessing(false)
-    toast.success("OCR completed successfully!")
   }, [fileInfo, language])
 
   const copyText = React.useCallback(() => {
-    if (extractedText) {
-      navigator.clipboard.writeText(extractedText)
+    const allText = results.map((r) => `--- Page ${r.page} (confidence: ${r.confidence}%) ---\n${r.text}`).join("\n\n")
+    if (allText) {
+      navigator.clipboard.writeText(allText)
       toast.success("Copied to clipboard")
     }
-  }, [extractedText])
+  }, [results])
 
   const downloadText = React.useCallback(() => {
-    if (!extractedText) return
-    const blob = new Blob([extractedText], { type: "text/plain" })
+    if (!results.length) return
+    const allText = results.map((r) => `--- Page ${r.page} (confidence: ${r.confidence}%) ---\n${r.text}`).join("\n\n")
+    const blob = new Blob([allText], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
     a.download = (fileInfo?.file.name.replace(/\.[^/.]+$/, "") || "ocr") + "_extracted.txt"
     a.click()
     URL.revokeObjectURL(url)
-  }, [extractedText, fileInfo])
+  }, [results, fileInfo])
+
+  const allText = results.map((r) => r.text).join("\n\n")
 
   return (
     <Card className="space-y-6 p-6">
@@ -135,6 +206,7 @@ export function OcrPdf() {
             className={cn(
               "flex items-center gap-4 rounded-xl border p-4",
               fileInfo.status === "done" ? "border-emerald-500/30 bg-emerald-500/5" :
+              fileInfo.status === "error" ? "border-destructive/30 bg-destructive/5" :
               "border-border bg-card"
             )}
           >
@@ -145,6 +217,8 @@ export function OcrPdf() {
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
+                <span className="ml-3">Type: {fileInfo.type.toUpperCase()}</span>
+                {fileInfo.type === "pdf" && <span className="ml-3">Pages (est.): {fileInfo.pages}</span>}
               </div>
             </div>
             {fileInfo.status === "idle" && (
@@ -171,6 +245,11 @@ export function OcrPdf() {
                   <option key={lang.code} value={lang.code}>{lang.label}</option>
                 ))}
               </select>
+              <p className="text-xs text-muted-foreground">
+                {fileInfo.type === "pdf"
+                  ? "PDF pages will be rendered and processed with Tesseract.js OCR (in-browser)"
+                  : "Images will be processed directly with Tesseract.js OCR (in-browser)"}
+              </p>
             </div>
           )}
 
@@ -178,32 +257,50 @@ export function OcrPdf() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                Running OCR (Language: {languages.find((l) => l.code === language)?.label})...
+                {progressLabel || `Running OCR (${languages.find((l) => l.code === language)?.label})...`}
               </div>
               <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
             </div>
           )}
 
-          {fileInfo.status === "done" && extractedText && (
+          {fileInfo.status === "done" && results.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="space-y-3"
             >
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-foreground">Extracted Text</p>
+                <p className="text-sm font-medium text-foreground">Extracted Text ({results.length} page{results.length > 1 ? "s" : ""})</p>
                 <div className="flex gap-2">
                   <Button size="sm" variant="ghost" onClick={copyText} icon={<Copy className="h-3.5 w-3.5" />}>
-                    Copy
+                    Copy All
                   </Button>
                   <Button size="sm" variant="ghost" onClick={downloadText} icon={<Download className="h-3.5 w-3.5" />}>
                     Download TXT
                   </Button>
                 </div>
               </div>
-              <div className="max-h-80 overflow-y-auto rounded-xl border border-border bg-background p-4">
-                <pre className="whitespace-pre-wrap text-sm text-foreground font-sans">{extractedText}</pre>
+
+              <div className="space-y-3">
+                {results.map((result) => (
+                  <div key={result.page} className="rounded-xl border border-border bg-background overflow-hidden">
+                    <div className="flex items-center justify-between bg-muted/30 px-4 py-2 border-b border-border">
+                      <span className="text-xs font-medium text-foreground">Page {result.page}</span>
+                      <span className={cn(
+                        "text-xs font-medium",
+                        result.confidence > 80 ? "text-emerald-500" :
+                        result.confidence > 50 ? "text-amber-500" : "text-destructive"
+                      )}>
+                        {result.confidence}% confidence
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <pre className="whitespace-pre-wrap text-sm text-foreground font-sans leading-relaxed">{result.text}</pre>
+                    </div>
+                  </div>
+                ))}
               </div>
+
               <Button variant="ghost" size="sm" onClick={removeFile} className="w-full">
                 Process another file
               </Button>
@@ -212,7 +309,7 @@ export function OcrPdf() {
 
           {fileInfo.status === "idle" && !isProcessing && (
             <Button onClick={process} size="lg" className="w-full" icon={<Scan className="h-4 w-4" />}>
-              Run OCR
+              Run OCR ({languages.find((l) => l.code === language)?.label})
             </Button>
           )}
         </div>

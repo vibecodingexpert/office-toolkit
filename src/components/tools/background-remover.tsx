@@ -5,257 +5,98 @@ import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { cn } from "@/lib/utils/cn"
-import {
-  Upload,
-  Download,
-  RefreshCw,
-  ImageOff,
-  Image,
-  Pipette,
-  Sliders,
-} from "lucide-react"
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
-function hexToRgb(hex: string): [number, number, number] {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result
-    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
-    : [0, 0, 0]
-}
-
-function colorDistance(c1: [number, number, number], c2: [number, number, number]): number {
-  return Math.sqrt(
-    (c1[0] - c2[0]) ** 2 +
-    (c1[1] - c2[1]) ** 2 +
-    (c1[2] - c2[2]) ** 2
-  )
-}
+import { Upload, Download, RefreshCw, ZoomIn, ZoomOut, ImageIcon } from "lucide-react"
 
 export function BackgroundRemover() {
-  const [file, setFile] = React.useState<File | null>(null)
-  const [preview, setPreview] = React.useState<string | null>(null)
-  const [resultUrl, setResultUrl] = React.useState<string | null>(null)
-  const [targetColor, setTargetColor] = React.useState("#00ff00")
-  const [tolerance, setTolerance] = React.useState(50)
-  const [loading, setLoading] = React.useState(false)
-  const [imgDims, setImgDims] = React.useState({ w: 0, h: 0 })
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const [image, setImage] = React.useState<string | null>(null)
+  const [result, setResult] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(false)
+  const [zoom, setZoom] = React.useState(1)
+  const [threshold, setThreshold] = React.useState(160)
+  const [color, setColor] = React.useState("#ffffff")
+  const [mode, setMode] = React.useState<"remove" | "replace">("remove")
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setFile(f)
-    setResultUrl(null)
-    const url = URL.createObjectURL(f)
-    if (preview) URL.revokeObjectURL(preview)
-    setPreview(url)
-    const img = new window.Image()
-    img.onload = () => setImgDims({ w: img.naturalWidth, h: img.naturalHeight })
-    img.src = url
-  }, [preview])
+  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) { const r = new FileReader(); r.onload = (ev) => { setImage(ev.target?.result as string); setResult(null) }; r.readAsDataURL(file) }
+  }
 
-  const handleCanvasClick = React.useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const processImage = () => {
+    if (!image) { toast.error("Please upload an image"); return }
+    setLoading(true)
     const canvas = canvasRef.current
     if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const pixel = ctx.getImageData(
-      Math.floor(x * scaleX),
-      Math.floor(y * scaleY),
-      1, 1
-    ).data
-    const hex = "#" + [pixel[0], pixel[1], pixel[2]]
-      .map((v) => v.toString(16).padStart(2, "0"))
-      .join("")
-    setTargetColor(hex)
-    toast.success(`Selected color: ${hex}`)
-  }, [])
-
-  const removeBackground = React.useCallback(async () => {
-    if (!preview) return
-    setLoading(true)
-    await new Promise((r) => setTimeout(r, 200))
-    try {
-      const img = new window.Image()
-      img.src = preview
-      await new Promise((r) => { img.onload = r })
-      const canvas = document.createElement("canvas")
-      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight
-      const ctx = canvas.getContext("2d")
-      if (!ctx) { toast.error("Canvas not available"); setLoading(false); return }
+    const img = new Image(1, 1)
+    img.onload = () => {
+      canvas.width = img.width
+      canvas.height = img.height
       ctx.drawImage(img, 0, 0)
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const data = imageData.data
-      const target = hexToRgb(targetColor)
       for (let i = 0; i < data.length; i += 4) {
-        const pixel: [number, number, number] = [data[i], data[i + 1], data[i + 2]]
-        const dist = colorDistance(pixel, target)
-        if (dist < tolerance) {
-          data[i + 3] = 0
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
+        if (avg > threshold) {
+          if (mode === "remove") { data[i + 3] = 0 }
+          else { const c = hexToRgb(color); data[i] = c.r; data[i + 1] = c.g; data[i + 2] = c.b }
         }
       }
       ctx.putImageData(imageData, 0, 0)
-      canvas.toBlob((blob) => {
-        if (!blob) { toast.error("Failed to remove background"); setLoading(false); return }
-        const url = URL.createObjectURL(blob)
-        if (resultUrl) URL.revokeObjectURL(resultUrl)
-        setResultUrl(url)
-        setLoading(false)
-        toast.success("Background removed")
-      }, "image/png")
-    } catch {
-      toast.error("Failed to process image")
+      setResult(canvas.toDataURL())
       setLoading(false)
+      toast.success("Background processed")
     }
-  }, [preview, targetColor, tolerance, resultUrl])
+    img.src = image
+  }
 
-  const handleDownload = React.useCallback(() => {
-    if (!resultUrl) return
-    const a = document.createElement("a")
-    a.href = resultUrl
-    a.download = (file?.name?.replace(/\.[^/.]+$/, "") || "image") + "_no_bg.png"
-    a.click()
-  }, [resultUrl, file])
+  const hexToRgb = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
+    return { r, g, b }
+  }
 
-  React.useEffect(() => {
-    if (!preview || !canvasRef.current) return
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    const img = new window.Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      ctx.drawImage(img, 0, 0)
-    }
-    img.src = preview
-  }, [preview])
+  const handleDownload = () => {
+    if (!result) return
+    const link = document.createElement("a"); link.download = "background-removed.png"; link.href = result; link.click()
+    toast.success("Image downloaded")
+  }
 
-  const handleReset = React.useCallback(() => {
-    if (preview) URL.revokeObjectURL(preview)
-    if (resultUrl) URL.revokeObjectURL(resultUrl)
-    setFile(null); setPreview(null); setResultUrl(null)
-    setImgDims({ w: 0, h: 0 })
-  }, [preview, resultUrl])
+  const handlePaste = async () => {
+    try {
+      const items = await navigator.clipboard.read()
+      for (const item of items) {
+        const blob = item.getType("image/png") || item.getType("image/jpeg")
+        if (blob) { const url = URL.createObjectURL(await blob); setImage(url); setResult(null); return }
+      }
+    } catch { toast.error("No image in clipboard") }
+  }
 
   return (
-    <Card className="space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <ImageOff className="h-5 w-5 text-primary" />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10"><ImageIcon className="h-6 w-6 text-teal-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Background Remover</h1><p className="text-sm text-muted-foreground">Remove or replace image backgrounds</p></div></div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-sm"><ZoomOut className="h-3 w-3 text-muted-foreground" /><input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-16" /><ZoomIn className="h-3 w-3 text-muted-foreground" /></div>
+          <Button variant="outline" size="sm" onClick={handlePaste}><Upload className="h-4 w-4" /> Paste</Button>
+          <label className="cursor-pointer rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent"><Upload className="mr-1 inline h-4 w-4" />Upload<input type="file" accept="image/*" onChange={handleImage} className="hidden" /></label>
+          {result && <Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /></Button>}
         </div>
-        <div>
-          <h2 className="text-lg font-semibold">Background Remover</h2>
-          <p className="text-sm text-muted-foreground">Remove backgrounds using color selection</p>
-        </div>
+      </motion.div>
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setMode("remove")} className={`rounded-lg border px-4 py-2 text-sm ${mode === "remove" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Remove Background</button>
+        <button onClick={() => setMode("replace")} className={`rounded-lg border px-4 py-2 text-sm ${mode === "replace" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Replace with Color</button>
+        <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-1 text-sm"><span className="text-muted-foreground">Threshold:</span><input type="range" min="0" max="255" value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value))} className="w-20" /><span className="text-xs text-muted-foreground">{threshold}</span></div>
+        {mode === "replace" && <div className="flex items-center gap-2"><span className="text-sm text-muted-foreground">Color:</span><input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-8 w-8 rounded border" /></div>}
+        <Button variant="primary" size="sm" onClick={processImage} disabled={loading}><RefreshCw className={`mr-1 h-4 w-4 ${loading ? "animate-spin" : ""}`} />{loading ? "Processing..." : "Process"}</Button>
       </div>
 
-      {!preview ? (
-        <label className="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-border bg-background p-8 text-center transition-all hover:border-primary/50 hover:bg-primary/[0.02]">
-          <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 shadow-sm ring-1 ring-primary/10">
-            <Upload className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">Drag & drop or <span className="text-primary underline underline-offset-2">browse</span></p>
-            <p className="mt-1 text-xs text-muted-foreground">Works best with solid color backgrounds</p>
-          </div>
-        </label>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Original - click to pick a color</label>
-              <div className="overflow-hidden rounded-xl border border-border bg-muted/30">
-                <canvas
-                  ref={canvasRef}
-                  onClick={handleCanvasClick}
-                  className="w-full cursor-crosshair"
-                  style={{ maxHeight: 300 }}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Result (transparent background)</label>
-              <div
-                className="overflow-hidden rounded-xl border border-border bg-muted/30"
-                style={{
-                  backgroundImage: "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)",
-                  backgroundSize: "20px 20px",
-                  backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
-                }}
-              >
-                {resultUrl ? (
-                  <img src={resultUrl} alt="No BG" className="mx-auto max-h-48 object-contain" />
-                ) : (
-                  <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
-                    Apply to see result
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-muted/20 p-4 space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Click on the background color in the original image to select it, then adjust tolerance.
-            </p>
-
-            <div className="flex items-center gap-4">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Selected Color</label>
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg border border-border" style={{ backgroundColor: targetColor }} />
-                  <input type="color" value={targetColor} onChange={(e) => setTargetColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded-lg border border-border" />
-                  <input type="text" value={targetColor} onChange={(e) => setTargetColor(e.target.value)}
-                    className="w-24 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-mono text-foreground" />
-                </div>
-              </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-xs text-muted-foreground">Tolerance: {tolerance}</label>
-                <input type="range" min={1} max={200} value={tolerance}
-                  onChange={(e) => setTolerance(Number(e.target.value))} className="w-full accent-primary" />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button onClick={removeBackground} loading={loading} icon={<ImageOff className="h-4 w-4" />}>
-              Remove Background
-            </Button>
-            {resultUrl && (
-              <Button variant="outline" onClick={handleDownload} icon={<Download className="h-4 w-4" />}>
-                Download PNG
-              </Button>
-            )}
-            <Button variant="ghost" onClick={handleReset} icon={<RefreshCw className="h-4 w-4" />}>
-              New Image
-            </Button>
-          </div>
-
-          {resultUrl && (
-            <div className="rounded-xl bg-muted/20 p-4 text-center">
-              <p className="text-xs text-muted-foreground">
-                Note: This uses chroma-key color removal. For best results, use an image with a solid,
-                uniform background color. For AI-powered background removal, upgrade to Pro.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {image && <Card className="flex items-center justify-center p-4"><div className="overflow-auto rounded-lg border border-border" style={{ maxHeight: 500 }}><img src={image} alt="Original" className="max-w-full" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }} /></div></Card>}
+        {result && <Card className="flex items-center justify-center p-4"><div className="overflow-auto rounded-lg border border-border" style={{ maxHeight: 500 }}><img src={result} alt="Result" className="max-w-full" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }} /></div></Card>}
+      </div>
+      <canvas ref={canvasRef} className="hidden" />
+    </div>
   )
 }

@@ -6,108 +6,170 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/toast"
-import { Download, FileText, Eye, EyeOff } from "lucide-react"
+import { Download, Eye, EyeOff, Plus, Trash2 } from "lucide-react"
+import jsPDF from "jspdf"
 
-interface Earning { id: string; label: string; amount: number }
-interface Deduction { id: string; label: string; amount: number }
-
-function formatCurrency(n: number): string { return `$${n.toFixed(2)}` }
+interface LineItem { id: string; description: string; amount: number }
 
 export function PayslipGenerator() {
-  const [employee, setEmployee] = React.useState({ name: "", id: "", department: "", designation: "", bank: "", account: "" })
-  const [period, setPeriod] = React.useState({ month: new Date().toLocaleString("default", { month: "long" }), year: new Date().getFullYear().toString() })
-  const [earnings, setEarnings] = React.useState<Earning[]>([
-    { id: "basic", label: "Basic Salary", amount: 0 },
-    { id: "hra", label: "HRA", amount: 0 },
-    { id: "allowances", label: "Allowances", amount: 0 },
-    { id: "bonus", label: "Bonus", amount: 0 },
-  ])
-  const [deductions, setDeductions] = React.useState<Deduction[]>([
-    { id: "tax", label: "Income Tax", amount: 0 },
-    { id: "insurance", label: "Health Insurance", amount: 0 },
-    { id: "pension", label: "Pension", amount: 0 },
-  ])
+  const [company, setCompany] = React.useState({ name: "", address: "", phone: "", email: "" })
+  const [employee, setEmployee] = React.useState({ name: "", id: "", department: "", designation: "", bankName: "", accountNo: "", pan: "", uan: "" })
+  const [period, setPeriod] = React.useState({ start: "", end: "" })
+  const [earnings, setEarnings] = React.useState<LineItem[]>([{ id: "basic", description: "Basic Salary", amount: 0 }])
+  const [deductions, setDeductions] = React.useState<LineItem[]>([{ id: "pf", description: "Provident Fund", amount: 0 }])
   const [showPreview, setShowPreview] = React.useState(false)
 
-  const updateEarning = (id: string, field: "label" | "amount", value: string | number) => {
-    setEarnings(earnings.map((e) => e.id === id ? { ...e, [field]: value } : e))
-  }
-  const updateDeduction = (id: string, field: "label" | "amount", value: string | number) => {
-    setDeductions(deductions.map((d) => d.id === id ? { ...d, [field]: value } : d))
-  }
+  const totalEarnings = earnings.reduce((s, e) => s + e.amount, 0)
+  const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0)
+  const netPay = totalEarnings - totalDeductions
 
-  const grossEarnings = earnings.reduce((s, e) => s + Number(e.amount), 0)
-  const totalDeductions = deductions.reduce((s, d) => s + Number(d.amount), 0)
-  const netSalary = grossEarnings - totalDeductions
+  const addEarning = () => setEarnings([...earnings, { id: crypto.randomUUID(), description: "", amount: 0 }])
+  const addDeduction = () => setDeductions([...deductions, { id: crypto.randomUUID(), description: "", amount: 0 }])
 
   const handleDownload = () => {
     if (!employee.name) { toast.error("Please enter employee name"); return }
-    const w = window.open("", "_blank")
-    if (!w) { toast.error("Please allow pop-ups"); return }
-    w.document.write(`
-      <html><head><title>Payslip - ${employee.name}</title>
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; max-width: 700px; margin: 0 auto; color: #1a1a2e; }
-        h1 { font-size: 24px; color: #0891b2; margin: 0; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-        th { background: #ecfeff; text-align: left; padding: 10px; font-size: 13px; border-bottom: 2px solid #a5f3fc; }
-        td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
-        .total-row td { font-weight: 700; border-top: 2px solid #0891b2; }
-        .net-row td { font-size: 18px; font-weight: 800; color: #0891b2; border-top: 3px solid #0891b2; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
-        @media print { body { padding: 0; } }
-      </style></head><body>
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0891b2;padding-bottom:15px;margin-bottom:20px">
-          <div><h1>PAYSLIP</h1><p style="color:#64748b;font-size:13px">${period.month} ${period.year}</p></div>
-          <div style="text-align:right"><strong>Employee ID:</strong> ${employee.id}</div>
-        </div>
-        <div class="grid">
-          <div><strong>Employee:</strong> ${employee.name}</div>
-          <div style="text-align:right"><strong>Department:</strong> ${employee.department}</div>
-          <div><strong>Designation:</strong> ${employee.designation}</div>
-          <div style="text-align:right"><strong>Bank:</strong> ${employee.bank} ${employee.account}</div>
-        </div>
-        <div style="display:flex;gap:20px">
-          <div style="flex:1"><table><tr><th>Earnings</th><th style="text-align:right">Amount</th></tr>${earnings.filter(e => e.amount > 0).map(e => `<tr><td>${e.label}</td><td style="text-align:right">${formatCurrency(e.amount)}</td></tr>`).join("")}<tr class="total-row"><td>Gross Earnings</td><td style="text-align:right">${formatCurrency(grossEarnings)}</td></tr></table></div>
-          <div style="flex:1"><table><tr><th>Deductions</th><th style="text-align:right">Amount</th></tr>${deductions.filter(d => d.amount > 0).map(d => `<tr><td>${d.label}</td><td style="text-align:right">${formatCurrency(d.amount)}</td></tr>`).join("")}<tr class="total-row"><td>Total Deductions</td><td style="text-align:right">${formatCurrency(totalDeductions)}</td></tr></table></div>
-        </div>
-        <table style="margin-top:20px"><tr class="net-row"><td>NET SALARY</td><td style="text-align:right">${formatCurrency(netSalary)}</td></tr></table>
-        <div style="margin-top:30px;font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px">This is a computer-generated payslip</div>
-      </body></html>
-    `)
-    w.document.close()
-    setTimeout(() => w.print(), 500)
+    if (!company.name) { toast.error("Please enter company name"); return }
+    const doc = new jsPDF({ unit: "mm", format: "a4" })
+    const m = 20
+    let y = m
+
+    doc.setFillColor("#14b8a6")
+    doc.rect(0, 0, 210, 10, "F")
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(16)
+    doc.setTextColor(255, 255, 255)
+    doc.text("PAYSLIP", 105, 7, { align: "center" })
+
+    y = 18
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.setTextColor(26, 26, 46)
+    doc.text(company.name, m, y); y += 5
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    doc.setTextColor(100, 116, 139)
+    doc.text(`Pay Period: ${period.start || "N/A"} - ${period.end || "N/A"}`, 190, y + 5, { align: "right" })
+    const companyDetails = [company.address, company.phone, company.email].filter(Boolean)
+    companyDetails.forEach((d) => { doc.text(d, m, y); y += 4 })
+    y += 8
+
+    doc.setFillColor("#f1f5f9")
+    doc.rect(m, y, 170, 25, "F")
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(10)
+    doc.setTextColor(26, 26, 46)
+    doc.text("Employee Details", m + 2, y + 4)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(71, 85, 105)
+    doc.text(`Name: ${employee.name}`, m + 2, y + 10)
+    doc.text(`ID: ${employee.id}`, m + 65, y + 10)
+    doc.text(`Department: ${employee.department}`, m + 110, y + 10)
+    doc.text(`Designation: ${employee.designation}`, m + 2, y + 17)
+    doc.text(`Bank: ${employee.bankName}`, m + 65, y + 17)
+    doc.text(`A/C: ${employee.accountNo}`, m + 110, y + 17)
+    y += 30
+
+    const col1 = m, col2 = 130
+    doc.setFillColor("#14b8a6")
+    doc.rect(col1, y, 75, 6, "F")
+    doc.setTextColor(255, 255, 255)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9)
+    doc.text("EARNINGS", col1 + 2, y + 4)
+    doc.setTextColor(71, 85, 105)
+    earnings.forEach((e) => {
+      y += 7
+      if (y > 270) { doc.addPage(); y = m }
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.text(e.description, col1 + 2, y)
+      doc.text(e.amount.toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }), col1 + 72, y, { align: "right" })
+    })
+    y += 7
+    doc.setDrawColor("#14b8a6")
+    doc.line(col1, y, col1 + 75, y)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(10)
+    doc.setTextColor(26, 26, 46)
+    doc.text("Total Earnings", col1 + 2, y + 4)
+    doc.text(totalEarnings.toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }), col1 + 72, y + 4, { align: "right" })
+    y += 12
+
+    doc.setFillColor("#14b8a6")
+    doc.rect(col2, 75, 60, 6, "F")
+    doc.setTextColor(255, 255, 255)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9)
+    doc.text("DEDUCTIONS", col2 + 2, 79)
+    let dy = 82
+    doc.setTextColor(71, 85, 105)
+    deductions.forEach((d) => {
+      dy += 7
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.text(d.description, col2 + 2, dy)
+      doc.text(d.amount.toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }), col2 + 57, dy, { align: "right" })
+    })
+    dy += 7
+    doc.setDrawColor("#14b8a6")
+    doc.line(col2, dy, col2 + 60, dy)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(10)
+    doc.setTextColor(26, 26, 46)
+    doc.text("Total Deductions", col2 + 2, dy + 4)
+    doc.text(totalDeductions.toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }), col2 + 57, dy + 4, { align: "right" })
+
+    const netY = Math.max(y + 18, dy + 18)
+    doc.setFillColor("#14b8a6")
+    doc.rect(m, netY, 170, 10, "F")
+    doc.setTextColor(255, 255, 255)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.text("NET PAY", m + 2, netY + 7)
+    doc.text(netPay.toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }), 190, netY + 7, { align: "right" })
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(148, 163, 184)
+    doc.text("This is a computer-generated payslip.", 105, 285, { align: "center" })
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 290, { align: "center" })
+
+    doc.save(`payslip-${employee.name.replace(/\s+/g, "_")}.pdf`)
+    toast.success("Payslip downloaded as PDF")
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/10"><FileText className="h-6 w-6 text-cyan-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Payslip Generator</h1><p className="text-sm text-muted-foreground">Generate employee payslips</p></div></div>
-        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download</Button></div>
+        <div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10"><Download className="h-6 w-6 text-teal-500" /></div><div><h1 className="text-2xl font-bold text-foreground">Payslip Generator</h1><p className="text-sm text-muted-foreground">Generate payslips with earnings & deductions</p></div></div>
+        <div className="flex items-center gap-2"><Button variant={showPreview ? "primary" : "outline"} size="sm" onClick={() => setShowPreview(!showPreview)}>{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button variant="primary" size="sm" onClick={handleDownload}><Download className="h-4 w-4" /> Download PDF</Button></div>
       </motion.div>
 
       <AnimatePresence mode="wait">
         {showPreview ? (
-          <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div key="preview" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
             <Card className="overflow-hidden p-0">
-              <div className="bg-white p-8 dark:bg-gray-950">
-                <div className="flex items-start justify-between border-b-2 border-cyan-500 pb-4 mb-4"><div><h2 className="text-xl font-bold text-cyan-600 dark:text-cyan-400">PAYSLIP</h2><p className="text-sm text-gray-500">{period.month} {period.year}</p></div><div className="text-right text-sm text-gray-500"><strong>ID:</strong> {employee.id}</div></div>
-                <div className="grid grid-cols-2 gap-2 text-sm mb-6"><div><strong>Employee:</strong> {employee.name || "—"}</div><div className="text-right"><strong>Department:</strong> {employee.department || "—"}</div><div><strong>Designation:</strong> {employee.designation || "—"}</div><div className="text-right"><strong>Bank:</strong> {employee.bank} {employee.account}</div></div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div><h4 className="text-xs font-bold uppercase tracking-wider text-cyan-600 mb-2">Earnings</h4><div className="space-y-1">{earnings.filter(e => e.amount > 0).map(e => <div key={e.id} className="flex justify-between text-sm"><span>{e.label}</span><span>${Number(e.amount).toFixed(2)}</span></div>)}<div className="flex justify-between border-t border-cyan-200 pt-1 font-bold text-sm">Gross: ${grossEarnings.toFixed(2)}</div></div></div>
-                  <div><h4 className="text-xs font-bold uppercase tracking-wider text-cyan-600 mb-2">Deductions</h4><div className="space-y-1">{deductions.filter(d => d.amount > 0).map(d => <div key={d.id} className="flex justify-between text-sm"><span>{d.label}</span><span>${Number(d.amount).toFixed(2)}</span></div>)}<div className="flex justify-between border-t border-cyan-200 pt-1 font-bold text-sm">Total: ${totalDeductions.toFixed(2)}</div></div></div>
-                </div>
-                <div className="mt-4 border-t-2 border-cyan-500 pt-3 flex justify-between text-lg font-bold text-cyan-600 dark:text-cyan-400"><span>NET SALARY</span><span>${netSalary.toFixed(2)}</span></div>
+              <div className="bg-white p-6 dark:bg-gray-950">
+                <div className="mb-4 rounded-t-lg bg-teal-500 px-4 py-2 text-center text-lg font-bold text-white">PAYSLIP</div>
+                <div className="flex items-start justify-between border-b pb-3"><div><h2 className="text-lg font-bold text-foreground">{company.name || "Company Name"}</h2><p className="text-xs text-muted-foreground">{company.address}<br />{company.phone}{company.phone && " | "}{company.email}</p></div><div className="text-right"><p className="text-sm text-foreground">Pay Period</p><p className="text-xs text-muted-foreground">{period.start || "Start"} - {period.end || "End"}</p></div></div>
+                <div className="mt-3 rounded-lg bg-muted p-3"><h3 className="text-sm font-bold uppercase text-teal-600">Employee Details</h3><div className="mt-2 grid grid-cols-3 gap-2 text-xs"><div><strong>Name:</strong> {employee.name || "—"}</div><div><strong>ID:</strong> {employee.id || "—"}</div><div><strong>Department:</strong> {employee.department || "—"}</div><div><strong>Designation:</strong> {employee.designation || "—"}</div><div><strong>Bank:</strong> {employee.bankName || "—"}</div><div><strong>A/C:</strong> {employee.accountNo || "—"}</div></div></div>
+                <div className="mt-4 grid grid-cols-2 gap-4"><div><h4 className="text-sm font-bold text-teal-600">Earnings</h4>{earnings.map((e) => <div key={e.id} className="mt-2 flex justify-between text-xs"><span>{e.description || "Item"}</span><span>{e.amount.toLocaleString("en-IN", { style: "currency", currency: "INR" })}</span></div>)}<hr className="my-2 border-teal-200" /><div className="flex justify-between text-sm font-bold"><span>Total Earnings</span><span className="text-teal-600">{totalEarnings.toLocaleString("en-IN", { style: "currency", currency: "INR" })}</span></div></div><div><h4 className="text-sm font-bold text-rose-600">Deductions</h4>{deductions.map((d) => <div key={d.id} className="mt-2 flex justify-between text-xs"><span>{d.description || "Item"}</span><span>{d.amount.toLocaleString("en-IN", { style: "currency", currency: "INR" })}</span></div>)}<hr className="my-2 border-rose-200" /><div className="flex justify-between text-sm font-bold"><span>Total Deductions</span><span className="text-rose-600">{totalDeductions.toLocaleString("en-IN", { style: "currency", currency: "INR" })}</span></div></div></div>
+                <div className="mt-4 rounded-lg bg-teal-500 px-4 py-2 text-right text-lg font-bold text-white">Net Pay: {netPay.toLocaleString("en-IN", { style: "currency", currency: "INR" })}</div>
               </div>
             </Card>
           </motion.div>
         ) : (
-          <motion.div key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <Card><h3 className="mb-4 font-semibold text-foreground">Employee Info</h3><div className="grid gap-4 sm:grid-cols-2"><Input label="Employee Name" value={employee.name} onChange={(e) => setEmployee({ ...employee, name: e.target.value })} /><Input label="Employee ID" value={employee.id} onChange={(e) => setEmployee({ ...employee, id: e.target.value })} /><Input label="Department" value={employee.department} onChange={(e) => setEmployee({ ...employee, department: e.target.value })} /><Input label="Designation" value={employee.designation} onChange={(e) => setEmployee({ ...employee, designation: e.target.value })} /><Input label="Bank Name" value={employee.bank} onChange={(e) => setEmployee({ ...employee, bank: e.target.value })} /><Input label="Account No" value={employee.account} onChange={(e) => setEmployee({ ...employee, account: e.target.value })} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Pay Period</h3><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><label className="text-sm font-medium text-foreground">Month</label><select value={period.month} onChange={(e) => setPeriod({ ...period, month: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">{["January","February","March","April","May","June","July","August","September","October","November","December"].map(m => <option key={m} value={m}>{m}</option>)}</select></div><Input label="Year" value={period.year} onChange={(e) => setPeriod({ ...period, year: e.target.value })} /></div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Earnings</h3><div className="space-y-3">{earnings.map(e => <div key={e.id} className="grid grid-cols-[1fr,120px] gap-3"><Input label={e.id === "basic" ? "Basic Salary" : e.id === "hra" ? "HRA" : e.id === "allowances" ? "Allowances" : "Bonus"} type="number" min="0" step="0.01" value={e.amount} onChange={(v) => updateEarning(e.id, "amount", Number(v.target.value))} /></div>)}</div></Card>
-            <Card><h3 className="mb-4 font-semibold text-foreground">Deductions</h3><div className="space-y-3">{deductions.map(d => <div key={d.id} className="grid grid-cols-[1fr,120px] gap-3"><Input label={d.id === "tax" ? "Income Tax" : d.id === "insurance" ? "Health Insurance" : "Pension"} type="number" min="0" step="0.01" value={d.amount} onChange={(v) => updateDeduction(d.id, "amount", Number(v.target.value))} /></div>)}</div></Card>
-            <Card><div className="space-y-2"><div className="flex justify-between text-sm"><span className="text-muted-foreground">Gross Earnings</span><span>${grossEarnings.toFixed(2)}</span></div><div className="flex justify-between text-sm"><span className="text-muted-foreground">Total Deductions</span><span className="text-destructive">-${totalDeductions.toFixed(2)}</span></div><div className="flex justify-between border-t border-border pt-2 text-lg font-bold"><span>Net Salary</span><span className="text-cyan-500">${netSalary.toFixed(2)}</span></div></div></Card>
+          <motion.div key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
+              <Card><h3 className="mb-4 font-semibold text-foreground">Company Info</h3><div className="grid gap-3"><Input label="Company Name" value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} /><Input label="Address" value={company.address} onChange={(e) => setCompany({ ...company, address: e.target.value })} /><Input label="Phone" value={company.phone} onChange={(e) => setCompany({ ...company, phone: e.target.value })} /><Input label="Email" type="email" value={company.email} onChange={(e) => setCompany({ ...company, email: e.target.value })} /></div></Card>
+              <Card><h3 className="mb-4 font-semibold text-foreground">Pay Period</h3><div className="grid gap-3 sm:grid-cols-2"><Input label="Start Date" type="date" value={period.start} onChange={(e) => setPeriod({ ...period, start: e.target.value })} /><Input label="End Date" type="date" value={period.end} onChange={(e) => setPeriod({ ...period, end: e.target.value })} /></div></Card>
+              <Card><div className="mb-4 flex items-center justify-between"><h3 className="font-semibold text-foreground">Earnings</h3><Button variant="outline" size="sm" onClick={addEarning}><Plus className="mr-1 h-4 w-4" />Add</Button></div>{earnings.map((e, i) => <div key={e.id} className="mb-3 flex items-end gap-2"><div className="flex-1"><Input label={i === 0 ? "Description" : undefined} placeholder="e.g. Basic Salary" value={e.description} onChange={(ev) => setEarnings(earnings.map((x) => x.id === e.id ? { ...x, description: ev.target.value } : x))} /></div><div className="w-28"><Input label={i === 0 ? "Amount" : undefined} type="number" value={e.amount || ""} onChange={(ev) => setEarnings(earnings.map((x) => x.id === e.id ? { ...x, amount: parseFloat(ev.target.value) || 0 } : x))} /></div><Button variant="ghost" size="sm" onClick={() => setEarnings(earnings.filter((x) => x.id !== e.id))} className="text-destructive"><Trash2 className="h-4 w-4" /></Button></div>)}</Card>
+            </div>
+            <div className="space-y-6">
+              <Card><h3 className="mb-4 font-semibold text-foreground">Employee Info</h3><div className="grid gap-3"><Input label="Employee Name" value={employee.name} onChange={(e) => setEmployee({ ...employee, name: e.target.value })} /><Input label="Employee ID" value={employee.id} onChange={(e) => setEmployee({ ...employee, id: e.target.value })} /><Input label="Department" value={employee.department} onChange={(e) => setEmployee({ ...employee, department: e.target.value })} /><Input label="Designation" value={employee.designation} onChange={(e) => setEmployee({ ...employee, designation: e.target.value })} /><Input label="Bank Name" value={employee.bankName} onChange={(e) => setEmployee({ ...employee, bankName: e.target.value })} /><Input label="Account No" value={employee.accountNo} onChange={(e) => setEmployee({ ...employee, accountNo: e.target.value })} /><Input label="PAN" value={employee.pan} onChange={(e) => setEmployee({ ...employee, pan: e.target.value })} /><Input label="UAN" value={employee.uan} onChange={(e) => setEmployee({ ...employee, uan: e.target.value })} /></div></Card>
+              <Card><div className="mb-4 flex items-center justify-between"><h3 className="font-semibold text-foreground">Deductions</h3><Button variant="outline" size="sm" onClick={addDeduction}><Plus className="mr-1 h-4 w-4" />Add</Button></div>{deductions.map((d, i) => <div key={d.id} className="mb-3 flex items-end gap-2"><div className="flex-1"><Input label={i === 0 ? "Description" : undefined} placeholder="e.g. PF" value={d.description} onChange={(ev) => setDeductions(deductions.map((x) => x.id === d.id ? { ...x, description: ev.target.value } : x))} /></div><div className="w-28"><Input label={i === 0 ? "Amount" : undefined} type="number" value={d.amount || ""} onChange={(ev) => setDeductions(deductions.map((x) => x.id === d.id ? { ...x, amount: parseFloat(ev.target.value) || 0 } : x))} /></div><Button variant="ghost" size="sm" onClick={() => setDeductions(deductions.filter((x) => x.id !== d.id))} className="text-destructive"><Trash2 className="h-4 w-4" /></Button></div>)}</Card>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

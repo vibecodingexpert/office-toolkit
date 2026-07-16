@@ -44,7 +44,7 @@ export function HeicConverter() {
     const url = URL.createObjectURL(f)
     if (preview) URL.revokeObjectURL(preview)
     setPreview(url)
-    const img = new window.Image()
+    const img = new window.Image(1, 1)
     img.onload = () => setImgDims({ w: img.naturalWidth, h: img.naturalHeight })
     img.src = url
   }, [preview])
@@ -54,7 +54,7 @@ export function HeicConverter() {
     setLoading(true)
     await new Promise((r) => setTimeout(r, 200))
     try {
-      const img = new window.Image()
+      const img = new window.Image(1, 1)
       img.src = preview
       await new Promise((r) => { img.onload = r })
       const canvas = document.createElement("canvas")

@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ProgressBar } from "@/components/ui/progress-bar"
-import { OutputPanel } from "@/components/ui/output-panel"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
@@ -15,7 +14,6 @@ import {
 interface FileInfo {
   id: string
   file: File
-  pages: number
   status: "idle" | "processing" | "done" | "error"
 }
 
@@ -24,14 +22,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
-
-function simulatePages(size: number): number {
-  return Math.max(1, Math.floor(size / 50000))
-}
-
-const loremTexts = [
-  "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nSed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.",
-]
 
 export function ExtractTextPdf() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
@@ -45,7 +35,6 @@ export function ExtractTextPdf() {
     setFileInfo({
       id: crypto.randomUUID(),
       file: f,
-      pages: simulatePages(f.size),
       status: "idle",
     })
     setProgress(0)
@@ -65,23 +54,37 @@ export function ExtractTextPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    let text = ""
-    for (let i = 0; i < Math.min(fileInfo.pages, 3); i++) {
-      text += loremTexts[0] + "\n\n--- Page " + (i + 1) + " ---\n\n"
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdfjsLib = await import("pdfjs-dist")
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@4.9.155/build/pdf.worker.min.mjs"
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise
+      let text = ""
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const content = await page.getTextContent()
+        const pageText = content.items.map((item: any) => item.str).join(" ")
+        text += pageText + "\n\n--- Page " + i + " ---\n\n"
+        setProgress(Math.min(90, Math.round((i / pdf.numPages) * 90)))
+      }
+
+      clearInterval(progressInterval)
+      setProgress(100)
+      setExtractedText(text.trim())
+      setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+      toast.success("Text extracted successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to extract text. Try a different PDF.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
     }
-    setExtractedText(text)
-    setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
-    setIsProcessing(false)
-    toast.success("Text extracted successfully!")
   }, [fileInfo])
 
   const copyText = React.useCallback(() => {
@@ -115,7 +118,7 @@ export function ExtractTextPdf() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Extract Text from PDF</h2>
-          <p className="text-sm text-muted-foreground">Extract all text content from PDF files</p>
+          <p className="text-sm text-muted-foreground">Extract all text content from PDF files using pdf.js</p>
         </div>
       </div>
 
@@ -148,7 +151,6 @@ export function ExtractTextPdf() {
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
-                <span>Pages: {fileInfo.pages}</span>
                 {fileInfo.status === "done" && <span>Words: {wordCount}</span>}
               </div>
             </div>

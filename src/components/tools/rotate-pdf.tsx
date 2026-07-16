@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, RotateCw,
 } from "lucide-react"
+import { rotatePDFPages } from "@/lib/utils/pdf-utils"
 
 interface FileInfo {
   id: string
   file: File
-  pages: number
   status: "idle" | "processing" | "done" | "error"
   resultUrl: string | null
   resultSize: number
@@ -26,19 +26,13 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function simulatePages(size: number): number {
-  return Math.max(1, Math.floor(size / 50000))
-}
-
-type Rotation = 90 | -90 | 180
+type Rotation = 0 | 90 | 180 | 270
 
 export function RotatePdf() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [rotation, setRotation] = React.useState<Rotation>(90)
-  const [applyToAll, setApplyToAll] = React.useState(true)
-  const [specificPages, setSpecificPages] = React.useState("")
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -46,7 +40,6 @@ export function RotatePdf() {
     setFileInfo({
       id: crypto.randomUUID(),
       file: f,
-      pages: simulatePages(f.size),
       status: "idle",
       resultUrl: null,
       resultSize: 0,
@@ -64,37 +57,43 @@ export function RotatePdf() {
 
   const process = React.useCallback(async () => {
     if (!fileInfo) return
-    if (!applyToAll && !specificPages.trim()) {
-      toast.error("Please specify pages or select 'All pages'")
-      return
-    }
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const blob = new Blob([fileInfo.file], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: fileInfo.file.size } : prev)
-    setIsProcessing(false)
-    toast.success("PDF rotated successfully!")
-  }, [fileInfo, rotation, applyToAll, specificPages])
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const blob = await rotatePDFPages(fileInfo.file, rotation)
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
+      toast.success("PDF rotated successfully!")
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to rotate PDF. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [fileInfo, rotation])
 
   const download = React.useCallback(() => {
     if (!fileInfo?.resultUrl) return
     const a = document.createElement("a")
     a.href = fileInfo.resultUrl
-    const deg = rotation === 90 ? "90cw" : rotation === -90 ? "90ccw" : "180"
+    const deg = rotation === 90 ? "90cw" : rotation === 180 ? "180" : "90ccw"
     a.download = fileInfo.file.name.replace(/\.pdf$/i, "") + `_rotated_${deg}.pdf`
     a.click()
   }, [fileInfo, rotation])
+
+  const rotationOptions: { label: string; value: Rotation }[] = [
+    { label: "90° CW", value: 90 },
+    { label: "90° CCW", value: 270 },
+    { label: "180°", value: 180 },
+  ]
 
   return (
     <Card className="space-y-6 p-6">
@@ -104,7 +103,7 @@ export function RotatePdf() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Rotate PDF</h2>
-          <p className="text-sm text-muted-foreground">Rotate PDF pages permanently</p>
+          <p className="text-sm text-muted-foreground">Rotate all PDF pages by a specified angle</p>
         </div>
       </div>
 
@@ -133,7 +132,6 @@ export function RotatePdf() {
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
-                <span>Pages: {fileInfo.pages}</span>
               </div>
             </div>
             {fileInfo.status === "idle" && (
@@ -144,44 +142,23 @@ export function RotatePdf() {
           </motion.div>
 
           {fileInfo.status === "idle" && !isProcessing && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Rotation</label>
-                <div className="flex gap-2">
-                  {([
-                    { label: "90° CW", value: 90 },
-                    { label: "90° CCW", value: -90 },
-                    { label: "180°", value: 180 },
-                  ] as const).map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setRotation(opt.value)}
-                      className={cn(
-                        "flex-1 rounded-xl border px-4 py-3 text-sm transition-all",
-                        rotation === opt.value
-                          ? "border-primary bg-primary/5 text-primary font-medium"
-                          : "border-border bg-background text-foreground hover:border-primary/50"
-                      )}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 cursor-pointer hover:bg-accent/50 transition-colors">
-                  <input type="checkbox" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} className="h-4 w-4 accent-primary rounded" />
-                  <span className="text-sm text-foreground">Apply to all pages</span>
-                </label>
-                {!applyToAll && (
-                  <input
-                    type="text"
-                    value={specificPages}
-                    onChange={(e) => setSpecificPages(e.target.value)}
-                    placeholder={`Page numbers (e.g. 1, 3, 5-7) — max ${fileInfo.pages}`}
-                    className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground transition-all focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
-                  />
-                )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Rotation</label>
+              <div className="flex gap-2">
+                {rotationOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setRotation(opt.value)}
+                    className={cn(
+                      "flex-1 rounded-xl border px-4 py-3 text-sm transition-all",
+                      rotation === opt.value
+                        ? "border-primary bg-primary/5 text-primary font-medium"
+                        : "border-border bg-background text-foreground hover:border-primary/50"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -209,7 +186,7 @@ export function RotatePdf() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">Rotation Complete</p>
-                    <p className="text-xs text-muted-foreground">{rotation}° {applyToAll ? "applied to all pages" : "applied to selected pages"}</p>
+                    <p className="text-xs text-muted-foreground">{rotation}° applied to all pages · {formatSize(fileInfo.resultSize)}</p>
                   </div>
                 </div>
                 <Button size="sm" variant="primary" onClick={download} icon={<Download className="h-3.5 w-3.5" />}>

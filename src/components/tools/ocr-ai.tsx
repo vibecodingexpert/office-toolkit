@@ -8,294 +8,307 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Scan,
+  ScanText,
+  Upload,
   Copy,
   Check,
   Sparkles,
-  Download,
-  Upload,
   Image,
-  Languages,
+  Download,
+  Trash2,
+  FileText,
 } from "lucide-react"
 
 const LANGUAGES = [
-  { code: "eng", name: "English" },
-  { code: "spa", name: "Spanish" },
-  { code: "fra", name: "French" },
-  { code: "deu", name: "German" },
-  { code: "ita", name: "Italian" },
-  { code: "por", name: "Portuguese" },
-  { code: "jpn", name: "Japanese" },
-  { code: "kor", name: "Korean" },
-  { code: "chi_sim", name: "Chinese (Simplified)" },
-  { code: "ara", name: "Arabic" },
-  { code: "rus", name: "Russian" },
-  { code: "hin", name: "Hindi" },
-]
+  { code: "eng", label: "English" },
+  { code: "fra", label: "French" },
+  { code: "deu", label: "German" },
+  { code: "spa", label: "Spanish" },
+  { code: "ita", label: "Italian" },
+  { code: "por", label: "Portuguese" },
+  { code: "nld", label: "Dutch" },
+  { code: "jpn", label: "Japanese" },
+  { code: "kor", label: "Korean" },
+  { code: "chi_sim", label: "Chinese (Simplified)" },
+  { code: "rus", label: "Russian" },
+  { code: "ara", label: "Arabic" },
+  { code: "hin", label: "Hindi" },
+  { code: "eng+fra", label: "English + French" },
+] as const
 
-const SIMULATED_OCR_RESULTS: Record<string, string> = {
-  eng: "This is a sample extracted text from the uploaded image.\n\nThe OCR process has successfully identified and extracted the text content from your document. The following paragraphs demonstrate the quality and accuracy of the text recognition:\n\nOffice Toolkit Pro - AI-Powered OCR\n\nExtract text from images with high accuracy using our advanced OCR technology. Simply upload an image, select the language, and let AI do the rest.\n\nKey Features:\n• Support for multiple languages\n• High accuracy text recognition\n• Preserves original formatting\n• Fast processing times\n• Download results as text file",
-  spa: "Este es un texto de muestra extraído de la imagen cargada.\n\nEl proceso de OCR ha identificado y extraído con éxito el contenido de texto de su documento.\n\nOffice Toolkit Pro - OCR impulsado por IA\n\nExtraiga texto de imágenes con alta precisión utilizando nuestra tecnología OCR avanzada.",
-  fra: "Ceci est un exemple de texte extrait de l'image téléchargée.\n\nLe processus d'OCR a identifié et extrait avec succès le contenu textuel de votre document.\n\nOffice Toolkit Pro - OCR alimenté par IA\n\nExtrayez le texte des images avec une haute précision grâce à notre technologie OCR avancée.",
-}
-
-const SAMPLE_IMAGES = [
-  "https://placehold.co/800x400/1e293b/6366f1?text=Sample+Document&font=inter",
-]
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
-export function OcrAi() {
-  const [file, setFile] = React.useState<File | null>(null)
-  const [preview, setPreview] = React.useState<string | null>(null)
+export function OcrAI() {
+  const [image, setImage] = React.useState<string | null>(null)
+  const [fileName, setFileName] = React.useState("")
   const [language, setLanguage] = React.useState("eng")
   const [loading, setLoading] = React.useState(false)
   const [progress, setProgress] = React.useState(0)
-  const [extractedText, setExtractedText] = React.useState("")
+  const [progressLabel, setProgressLabel] = React.useState("")
+  const [result, setResult] = React.useState("")
+  const [confidence, setConfidence] = React.useState(0)
   const [copied, setCopied] = React.useState(false)
+  const [tesseractReady, setTesseractReady] = React.useState(true)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
+  const handleFileSelect = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-    if (!f.type.startsWith("image/")) {
-      toast.error("Please upload an image file")
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File too large. Maximum size is 10MB.")
       return
     }
 
-    setFile(f)
-    setExtractedText("")
-    if (preview) URL.revokeObjectURL(preview)
-    setPreview(URL.createObjectURL(f))
-  }, [preview])
+    const validTypes = ["image/png", "image/jpeg", "image/webp", "image/bmp", "image/tiff"]
+    if (!validTypes.includes(file.type)) {
+      toast.error("Invalid file type. Please upload PNG, JPEG, WebP, BMP, or TIFF.")
+      return
+    }
+
+    setFileName(file.name)
+    setResult("")
+    setConfidence(0)
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setImage(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }, [])
 
   const handleDrop = React.useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    const f = e.dataTransfer.files?.[0]
-    if (!f || !f.type.startsWith("image/")) {
-      toast.error("Please drop an image file")
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File too large.")
       return
     }
-    setFile(f)
-    setExtractedText("")
-    if (preview) URL.revokeObjectURL(preview)
-    setPreview(URL.createObjectURL(f))
-  }, [preview])
+
+    setFileName(file.name)
+    setResult("")
+    setConfidence(0)
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setImage(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }, [])
 
   const handleDragOver = React.useCallback((e: React.DragEvent) => {
     e.preventDefault()
   }, [])
 
-  const handleExtract = React.useCallback(async () => {
-    if (!file) {
+  const handleRemoveImage = React.useCallback(() => {
+    setImage(null)
+    setFileName("")
+    setResult("")
+    setConfidence(0)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }, [])
+
+  const handleRunOcr = React.useCallback(async () => {
+    if (!image) {
       toast.error("Please upload an image first")
       return
     }
 
     setLoading(true)
     setProgress(0)
+    setProgressLabel("Loading OCR engine...")
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 12
-        return next >= 90 ? 90 : next
+    try {
+      const Tesseract = await import("tesseract.js")
+
+      const result = await Tesseract.recognize(image, language, {
+        logger: (m: { status: string; progress: number }) => {
+          if (m.status === "loading tesseract core") setProgressLabel("Loading OCR engine...")
+          else if (m.status === "initializing tesseract") setProgressLabel("Initializing...")
+          else if (m.status === "loading language traineddata") setProgressLabel(`Loading ${language} language data...`)
+          else if (m.status === "initializing api") setProgressLabel("Preparing OCR...")
+          else if (m.status === "recognizing text") setProgressLabel("Recognizing text...")
+          setProgress(Math.round(m.progress * 100))
+        },
       })
-    }, 300)
 
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
+      setResult(result.data.text)
+      setConfidence(Math.round(result.data.confidence))
+      setProgress(100)
+      setProgressLabel("Complete")
 
-    clearInterval(interval)
-    setProgress(100)
-
-    const result = SIMULATED_OCR_RESULTS[language] || SIMULATED_OCR_RESULTS.eng
-    setExtractedText(result)
-    setLoading(false)
-    toast.success("Text extracted successfully")
-  }, [file, language])
+      if (result.data.text.trim()) {
+        toast.success(`Text extracted with ${Math.round(result.data.confidence)}% confidence`)
+      } else {
+        toast.warning("No text detected in the image")
+      }
+    } catch (err) {
+      console.error("OCR error:", err)
+      toast.error("OCR processing failed. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }, [image, language])
 
   const handleCopy = React.useCallback(async () => {
-    if (!extractedText) return
     try {
-      await navigator.clipboard.writeText(extractedText)
+      await navigator.clipboard.writeText(result)
       setCopied(true)
-      toast.success("Copied to clipboard")
+      toast.success("Copied")
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      toast.error("Failed to copy")
-    }
-  }, [extractedText])
+    } catch { toast.error("Failed to copy") }
+  }, [result])
 
   const handleDownload = React.useCallback(() => {
-    if (!extractedText) return
-    const blob = new Blob([extractedText], { type: "text/plain" })
+    const blob = new Blob([result], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
-    a.href = url
-    a.download = "extracted-text.txt"
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success("Text file downloaded")
-  }, [extractedText])
-
-  const handleReset = React.useCallback(() => {
-    if (preview) URL.revokeObjectURL(preview)
-    setFile(null)
-    setPreview(null)
-    setExtractedText("")
-    setProgress(0)
-  }, [preview])
+    a.href = url; a.download = "ocr_result.txt"
+    document.body.appendChild(a); a.click()
+    document.body.removeChild(a); URL.revokeObjectURL(url)
+    toast.success("Downloaded")
+  }, [result])
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-3"
-      >
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 shadow-sm">
-          <Scan className="h-6 w-6 text-primary" />
+          <ScanText className="h-6 w-6 text-primary" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">OCR AI</h1>
-          <p className="text-sm text-muted-foreground">Extract text from images with AI</p>
+          <p className="text-sm text-muted-foreground">Extract text from images using tesseract.js</p>
         </div>
       </motion.div>
 
       <Card className="space-y-6 p-6">
-        {!preview ? (
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            className="flex cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-border bg-background p-10 text-center transition-all hover:border-primary/50 hover:bg-primary/[0.02]"
-          >
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFile}
-              className="hidden"
-              id="ocr-file-input"
-            />
-            <label htmlFor="ocr-file-input" className="cursor-pointer flex flex-col items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 shadow-sm ring-1 ring-primary/10">
-                <Upload className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Drop an image here or <span className="text-primary underline underline-offset-2">browse</span>
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Supports JPG, PNG, WebP up to 10MB
-                </p>
-              </div>
-            </label>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-xl border border-border bg-muted/30">
-              <img
-                src={preview}
-                alt="Uploaded document"
-                className="mx-auto max-h-64 object-contain"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Image className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium text-foreground">{file?.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {file ? formatFileSize(file.size) : ""}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleReset}
-                className="text-xs text-primary hover:underline"
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Language</label>
-          <div className="relative">
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 pr-10 text-sm text-foreground transition-colors hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30 appearance-none"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
-            <Languages className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex flex-wrap gap-2">
+            {LANGUAGES.map(lang => (
+              <button key={lang.code} onClick={() => setLanguage(lang.code)} className={cn("rounded-xl border px-3 py-1.5 text-xs font-medium transition-all", language === lang.code ? "border-primary/50 bg-primary/5 text-primary shadow-sm" : "border-border text-foreground hover:border-primary/30")}>{lang.label}</button>
+            ))}
           </div>
         </div>
 
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          className="relative"
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {!image ? (
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-muted/20 p-10 transition-all hover:border-primary/50 hover:bg-primary/5"
+            >
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 shadow-sm">
+                <Upload className="h-6 w-6 text-primary" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">Click to upload or drag and drop</p>
+                <p className="mt-1 text-xs text-muted-foreground">PNG, JPEG, WebP, BMP, or TIFF (max 10MB)</p>
+              </div>
+            </motion.button>
+          ) : (
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-muted/20">
+              <div className="absolute right-2 top-2 z-10 flex gap-1">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleRemoveImage}
+                  className="flex h-8 items-center gap-1.5 rounded-lg bg-background/80 px-3 text-xs font-medium text-muted-foreground hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </motion.button>
+              </div>
+              <div className="flex items-center justify-center p-2">
+                <img
+                  src={image}
+                  alt="Uploaded"
+                  className="max-h-[400px] rounded-xl object-contain"
+                />
+              </div>
+              {fileName && (
+                <div className="border-t border-border px-4 py-2">
+                  <p className="text-xs text-muted-foreground truncate">{fileName}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <Button
-          onClick={handleExtract}
+          onClick={handleRunOcr}
           loading={loading}
+          disabled={!image}
           fullWidth
           size="lg"
-          icon={<Sparkles className="h-5 w-5" />}
-          disabled={!file}
+          icon={<ScanText className="h-5 w-5" />}
         >
           Extract Text
         </Button>
 
         {loading && (
-          <ProgressBar value={progress} variant="gradient" showPercentage label="Extracting text..." />
+          <ProgressBar value={progress} variant="gradient" showPercentage label={progressLabel} />
         )}
       </Card>
 
       <AnimatePresence>
-        {extractedText && (
+        {result !== "" && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+            className="space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <div className="flex items-center gap-2">
-                <Scan className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-foreground">Extracted Text</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleCopy}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                >
-                  {copied ? (
-                    <><Check className="h-3.5 w-3.5 text-emerald-500" /> Copied</>
-                  ) : (
-                    <><Copy className="h-3.5 w-3.5" /> Copy</>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium text-foreground">Extracted Text</span>
+                  {confidence > 0 && (
+                    <span className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      confidence >= 80 ? "bg-emerald-500/10 text-emerald-500" :
+                      confidence >= 50 ? "bg-amber-500/10 text-amber-500" :
+                      "bg-red-500/10 text-red-500"
+                    )}>
+                      {confidence}% confidence
+                    </span>
                   )}
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleDownload}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Download
-                </motion.button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleDownload} disabled={!result} className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"><Download className="h-3.5 w-3.5" /></motion.button>
+                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleCopy} disabled={!result} className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}</motion.button>
+                </div>
               </div>
-            </div>
-            <div className="p-5">
-              <pre className="whitespace-pre-wrap text-sm text-foreground font-sans leading-relaxed">
-                {extractedText}
-              </pre>
-            </div>
+              <div className="p-5">
+                {result.trim() ? (
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{result}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No text detected in the image.</p>
+                )}
+              </div>
+              {result.trim() && (
+                <div className="border-t border-border px-5 py-2">
+                  <p className="text-xs text-muted-foreground">{result.split(/\s+/).filter(Boolean).length} words extracted</p>
+                </div>
+              )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

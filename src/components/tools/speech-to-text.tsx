@@ -9,330 +9,272 @@ import { cn } from "@/lib/utils/cn"
 import {
   Mic,
   Square,
+  Loader2,
   Copy,
   Check,
+  Trash2,
   Download,
-  Languages,
   Volume2,
-  Pause,
-  Play,
+  Languages,
 } from "lucide-react"
 
 const LANGUAGES = [
-  { code: "en-US", name: "English (US)" },
-  { code: "en-GB", name: "English (UK)" },
-  { code: "es-ES", name: "Spanish" },
-  { code: "fr-FR", name: "French" },
-  { code: "de-DE", name: "German" },
-  { code: "it-IT", name: "Italian" },
-  { code: "pt-BR", name: "Portuguese" },
-  { code: "ja-JP", name: "Japanese" },
-  { code: "ko-KR", name: "Korean" },
-  { code: "zh-CN", name: "Chinese" },
-]
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "es-ES", label: "Spanish" },
+  { code: "fr-FR", label: "French" },
+  { code: "de-DE", label: "German" },
+  { code: "it-IT", label: "Italian" },
+  { code: "pt-BR", label: "Portuguese (BR)" },
+  { code: "ja-JP", label: "Japanese" },
+  { code: "ko-KR", label: "Korean" },
+  { code: "zh-CN", label: "Chinese (Simplified)" },
+  { code: "ru-RU", label: "Russian" },
+  { code: "ar-SA", label: "Arabic" },
+  { code: "hi-IN", label: "Hindi" },
+  { code: "nl-NL", label: "Dutch" },
+  { code: "sv-SE", label: "Swedish" },
+] as const
 
-const SIMULATED_TRANSCRIPTS: Record<string, string[]> = {
-  "en-US": [
-    "Welcome to today's meeting. Let's begin by reviewing the agenda for this quarter's planning session.",
-    "Based on the data we've collected, the key metrics show a significant improvement in user engagement over the past three months.",
-    "I'd like to propose a new approach to our content strategy. Instead of focusing on quantity, we should prioritize quality and relevance.",
-    "The team has done an excellent job on the project. Let's take a moment to acknowledge their hard work and dedication.",
-    "Looking ahead, we need to focus on three main priorities: customer satisfaction, product innovation, and operational efficiency.",
-  ],
-  "es-ES": [
-    "Bienvenidos a la reunión de hoy. Comencemos revisando la agenda para la sesión de planificación de este trimestre.",
-    "Según los datos recopilados, las métricas clave muestran una mejora significativa en la participación de los usuarios.",
-    "Me gustaría proponer un nuevo enfoque para nuestra estrategia de contenido.",
-    "El equipo ha hecho un trabajo excelente en el proyecto. Reconozcamos su dedicación.",
-    "Mirando hacia adelante, debemos enfocarnos en tres prioridades principales.",
-  ],
-  "fr-FR": [
-    "Bienvenue à la réunion d'aujourd'hui. Commençons par examiner l'ordre du jour de cette session de planification.",
-    "D'après les données collectées, les indicateurs clés montrent une amélioration significative de l'engagement des utilisateurs.",
-    "J'aimerais proposer une nouvelle approche pour notre stratégie de contenu.",
-    "L'équipe a fait un excellent travail sur le projet. Prenons un moment pour reconnaître leur dévouement.",
-    "Pour l'avenir, nous devons nous concentrer sur trois priorités principales.",
-  ],
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: any
-    webkitSpeechRecognition: any
-  }
-}
-
-function getRecognition(): any | null {
-  if (typeof window === "undefined") return null
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null
+type SpeechRecognitionAPI = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start: () => void
+  stop: () => void
+  abort: () => void
+  onresult: ((event: { results: SpeechRecognitionResultList }) => void) | null
+  onerror: ((event: { error: string }) => void) | null
+  onend: (() => void) | null
 }
 
 export function SpeechToText() {
-  const [isRecording, setIsRecording] = React.useState(false)
-  const [isPaused, setIsPaused] = React.useState(false)
+  const [language, setLanguage] = React.useState("en-US")
+  const [isListening, setIsListening] = React.useState(false)
   const [transcript, setTranscript] = React.useState("")
   const [interimTranscript, setInterimTranscript] = React.useState("")
-  const [language, setLanguage] = React.useState("en-US")
+  const [error, setError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
-  const recognitionRef = React.useRef<any>(null)
+  const [isSupported, setIsSupported] = React.useState(true)
+  const recognitionRef = React.useRef<SpeechRecognitionAPI | null>(null)
 
-  const startRecording = React.useCallback(() => {
-    const Recognition = getRecognition()
-    if (Recognition) {
-      try {
-        const recognition = new Recognition()
-        recognition.continuous = true
-        recognition.interimResults = true
-        recognition.lang = language
+  React.useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setIsSupported(false)
+      setError("Speech recognition is not supported in this browser. Try Chrome or Edge.")
+      return
+    }
 
-        recognition.onresult = (event: any) => {
-          let interim = ""
-          let final = ""
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const result = event.results[i]
-            if (result.isFinal) {
-              final += result[0].transcript + " "
-            } else {
-              interim += result[0].transcript
-            }
-          }
-          if (final) {
-            setTranscript((prev) => prev + final)
-          }
-          setInterimTranscript(interim)
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
+
+    recognition.onresult = (event: any) => {
+      let interim = ""
+      let final = ""
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i]
+        if (result.isFinal) {
+          final += result[0].transcript + " "
+        } else {
+          interim += result[0].transcript
         }
+      }
 
-        recognition.onerror = (event: any) => {
-          console.error("Speech recognition error:", event.error)
-          if (event.error === "not-allowed") {
-            toast.error("Microphone access denied. Please allow microphone permissions.")
-          } else {
-            toast.error(`Speech recognition error: ${event.error}`)
-          }
-          setIsRecording(false)
-        }
+      if (final) {
+        setTranscript(prev => prev + final)
+      }
+      setInterimTranscript(interim)
+    }
 
-        recognition.onend = () => {
-          if (isRecording && !isPaused) {
-            try { recognition.start() } catch {}
-          }
-        }
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error)
+      if (event.error === "not-allowed") {
+        setError("Microphone access denied. Please allow microphone permissions.")
+      } else if (event.error === "no-speech") {
+        setError("No speech detected. Please try again.")
+      } else {
+        setError(`Error: ${event.error}`)
+      }
+      setIsListening(false)
+    }
 
-        recognition.start()
-        recognitionRef.current = recognition
-        setIsRecording(true)
-        setIsPaused(false)
-        toast.success("Recording started")
-        return
-      } catch (err) {
-        console.error("Failed to start recognition:", err)
+    recognition.onend = () => {
+      if (isListening) {
+        try { recognition.start() } catch {}
       }
     }
 
-    // Simulated fallback
-    setIsRecording(true)
-    setIsPaused(false)
-    setTranscript("")
-    toast.success("Recording started (simulated mode)")
-  }, [language, isRecording, isPaused])
+    recognitionRef.current = recognition
 
-  const stopRecording = React.useCallback(() => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop() } catch {}
-      recognitionRef.current = null
+    return () => {
+      try { recognition.stop() } catch {}
     }
-    setIsRecording(false)
-    setIsPaused(false)
-    setInterimTranscript("")
-    if (transcript) {
-      toast.success(`Recording stopped. ${transcript.split(" ").length} words captured.`)
-    }
-  }, [transcript])
-
-  const pauseRecording = React.useCallback(() => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop() } catch {}
-    }
-    setIsPaused(true)
   }, [])
 
-  const resumeRecording = React.useCallback(() => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.start() } catch {}
-    }
-    setIsPaused(false)
-  }, [])
-
-  // Simulated speech for demo when browser API not available
   React.useEffect(() => {
-    if (!isRecording || isPaused || getRecognition()) return
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = language
+    }
+  }, [language])
 
-    const interval = setInterval(() => {
-      const langTranscripts = SIMULATED_TRANSCRIPTS[language] || SIMULATED_TRANSCRIPTS["en-US"]
-      const sentence = langTranscripts[Math.floor(Math.random() * langTranscripts.length)]
-      setTranscript((prev) => prev + sentence + " ")
-    }, 3000)
+  const handleToggleListening = React.useCallback(async () => {
+    if (!recognitionRef.current) {
+      toast.error("Speech recognition not available")
+      return
+    }
 
-    return () => clearInterval(interval)
-  }, [isRecording, isPaused, language])
+    if (isListening) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+      setInterimTranscript("")
+      toast.success("Recording stopped")
+      return
+    }
+
+    setError(null)
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(t => t.stop())
+
+      recognitionRef.current.lang = language
+      recognitionRef.current.start()
+      setIsListening(true)
+      toast.success("Recording started")
+    } catch {
+      setError("Microphone access denied. Please allow microphone permissions in your browser settings.")
+      toast.error("Microphone access denied")
+    }
+  }, [isListening, language])
 
   const handleCopy = React.useCallback(async () => {
-    if (!transcript) return
     try {
       await navigator.clipboard.writeText(transcript)
       setCopied(true)
-      toast.success("Copied to clipboard")
+      toast.success("Copied")
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      toast.error("Failed to copy")
-    }
+    } catch { toast.error("Failed to copy") }
   }, [transcript])
 
+  const handleClear = React.useCallback(() => {
+    setTranscript("")
+    setInterimTranscript("")
+    setError(null)
+    toast.success("Cleared")
+  }, [])
+
   const handleDownload = React.useCallback(() => {
-    if (!transcript) return
     const blob = new Blob([transcript], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
-    a.href = url
-    a.download = "transcription.txt"
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success("Transcription downloaded")
+    a.href = url; a.download = "transcript.txt"
+    document.body.appendChild(a); a.click()
+    document.body.removeChild(a); URL.revokeObjectURL(url)
+    toast.success("Downloaded")
   }, [transcript])
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-3"
-      >
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 shadow-sm">
           <Mic className="h-6 w-6 text-primary" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Speech to Text</h1>
-          <p className="text-sm text-muted-foreground">Convert speech to text in real-time</p>
+          <p className="text-sm text-muted-foreground">Real-time transcription using Web Speech API</p>
         </div>
       </motion.div>
 
       <Card className="space-y-6 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {!isRecording ? (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={startRecording}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-lg"
-              >
-                <Mic className="h-6 w-6" />
-              </motion.button>
-            ) : (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={stopRecording}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-lg"
-              >
-                <Square className="h-6 w-6" />
-              </motion.button>
-            )}
-
-            {isRecording && (
-              <>
-                {isPaused ? (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={resumeRecording}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm"
-                  >
-                    <Play className="h-5 w-5" />
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={pauseRecording}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20 text-amber-500 shadow-sm"
-                  >
-                    <Pause className="h-5 w-5" />
-                  </motion.button>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30 appearance-none pr-8"
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>{l.name}</option>
-                ))}
-              </select>
-              <Languages className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            </div>
-
-            {isRecording && (
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                <span className="text-xs text-muted-foreground">
-                  {isPaused ? "Paused" : "Recording..."}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Transcription</label>
-          <div className="min-h-[200px] rounded-2xl border border-border bg-background p-4">
-            {transcript || interimTranscript ? (
-              <p className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
-                {transcript}
-                {interimTranscript && (
-                  <span className="text-muted-foreground/60">{interimTranscript}</span>
-                )}
-              </p>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 py-8">
-                <Volume2 className="h-8 w-8 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
-                  {isRecording ? "Listening..." : "Click the mic button to start recording"}
-                </p>
-              </div>
-            )}
-          </div>
-          {transcript && (
-            <p className="text-xs text-muted-foreground">{transcript.split(" ").length} words</p>
-          )}
-        </div>
-
-        {transcript && (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="outline"
-              size="md"
-              onClick={handleCopy}
-              icon={copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            >
-              {copied ? "Copied" : "Copy Text"}
-            </Button>
-            <Button
-              variant="outline"
-              size="md"
-              onClick={handleDownload}
-              icon={<Download className="h-4 w-4" />}
-            >
-              Download
-            </Button>
+        {!isSupported && (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-500">
+            Speech recognition is not supported in this browser. Please use Chrome or Edge.
           </div>
         )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Language</label>
+          <div className="flex flex-wrap gap-2">
+            {LANGUAGES.map(lang => (
+              <button key={lang.code} onClick={() => setLanguage(lang.code)} className={cn("rounded-xl border px-3 py-1.5 text-xs font-medium transition-all", language === lang.code ? "border-primary/50 bg-primary/5 text-primary shadow-sm" : "border-border text-foreground hover:border-primary/30")}>{lang.label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center gap-4 py-4">
+          <motion.button
+            whileHover={isSupported ? { scale: 1.05 } : {}}
+            whileTap={isSupported ? { scale: 0.95 } : {}}
+            onClick={handleToggleListening}
+            disabled={!isSupported}
+            className={cn(
+              "relative flex h-20 w-20 items-center justify-center rounded-full transition-all",
+              isListening
+                ? "bg-red-500/20 text-red-500 shadow-lg shadow-red-500/20"
+                : "bg-primary/10 text-primary shadow-lg shadow-primary/20 hover:bg-primary/20",
+              !isSupported && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            {isListening ? (
+              <>
+                <div className="absolute inset-0 animate-ping rounded-full bg-red-500/20" />
+                <Square className="relative h-7 w-7" />
+              </>
+            ) : (
+              <Mic className="relative h-7 w-7" />
+            )}
+          </motion.button>
+        </div>
+
+        {isListening && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+            <div className="flex items-center justify-center gap-2">
+              <div className="flex gap-1">
+                {[1, 2, 3].map(i => (
+                  <motion.div
+                    key={i}
+                    animate={{ height: [8, 20, 8] }}
+                    transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.15 }}
+                    className="w-1.5 rounded-full bg-primary"
+                  />
+                ))}
+              </div>
+              <span className="ml-2 text-sm text-muted-foreground">Listening...</span>
+            </div>
+          </motion.div>
+        )}
+
+        {error && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">{error}</motion.div>
+        )}
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-foreground">Transcript</label>
+            <div className="flex items-center gap-1">
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleDownload} disabled={!transcript} className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"><Download className="h-3.5 w-3.5" /></motion.button>
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleCopy} disabled={!transcript} className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50">{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}</motion.button>
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleClear} disabled={!transcript && !interimTranscript} className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground hover:text-red-500 hover:bg-accent transition-colors disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></motion.button>
+            </div>
+          </div>
+          <div className="min-h-[200px] rounded-2xl border border-border bg-background p-4">
+            {transcript || interimTranscript ? (
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {transcript}
+                <span className="text-muted-foreground">{interimTranscript}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Your transcript will appear here...</p>
+            )}
+          </div>
+          {(transcript || interimTranscript) && (
+            <p className="text-xs text-muted-foreground">{transcript.split(/\s+/).filter(Boolean).length + interimTranscript.split(/\s+/).filter(Boolean).length} words</p>
+          )}
+        </div>
       </Card>
     </div>
   )

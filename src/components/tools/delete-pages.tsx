@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils/cn"
 import {
   Upload, Download, FileText, Check, X, FileDown, Trash2,
 } from "lucide-react"
+import { deletePagesFromPDF } from "@/lib/utils/pdf-utils"
 
 interface FileInfo {
   id: string
@@ -26,10 +27,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function simulatePages(size: number): number {
-  return Math.max(3, Math.floor(size / 50000))
-}
-
 export function DeletePages() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
   const [progress, setProgress] = React.useState(0)
@@ -37,14 +34,18 @@ export function DeletePages() {
   const [selectedPages, setSelectedPages] = React.useState<number[]>([])
   const [showConfirm, setShowConfirm] = React.useState(false)
 
-  const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    const pages = simulatePages(f.size)
+    const { PDFDocument } = await import("pdf-lib")
+    const bytes = await f.arrayBuffer()
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+    const totalPages = pdf.getPageCount()
+
     setFileInfo({
       id: crypto.randomUUID(),
       file: f,
-      pages,
+      pages: totalPages,
       status: "idle",
       resultUrl: null,
       resultSize: 0,
@@ -92,22 +93,25 @@ export function DeletePages() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 12
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000))
-    clearInterval(interval)
-    setProgress(100)
-    const remaining = fileInfo.pages - selectedPages.length
-    const ratio = remaining / fileInfo.pages
-    const blob = new Blob([fileInfo.file], { type: "application/pdf" })
-    const url = URL.createObjectURL(blob)
-    setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: Math.round(fileInfo.file.size * ratio) } : prev)
-    setIsProcessing(false)
-    toast.success(`Deleted ${selectedPages.length} page(s)!`)
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
+    }, 300)
+
+    try {
+      const blob = await deletePagesFromPDF(fileInfo.file, selectedPages)
+      clearInterval(progressInterval)
+      setProgress(100)
+      const url = URL.createObjectURL(blob)
+      const remaining = fileInfo.pages - selectedPages.length
+      setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
+      toast.success(`Deleted ${selectedPages.length} page(s)!`)
+    } catch {
+      clearInterval(progressInterval)
+      toast.error("Failed to delete pages. Please try again.")
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+    } finally {
+      setIsProcessing(false)
+    }
   }, [fileInfo, selectedPages])
 
   const download = React.useCallback(() => {
