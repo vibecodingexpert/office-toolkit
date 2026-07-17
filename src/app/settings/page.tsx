@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { motion } from "framer-motion"
+import { useTheme } from "next-themes"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { useToolStore } from "@/lib/store/use-tool-store"
@@ -14,7 +15,9 @@ const themes = [
 ]
 
 export default function SettingsPage() {
-  const { theme, setTheme, recentTools, favorites, clearRecentTools, clearFavorites } = useToolStore()
+  const { theme: nextTheme, setTheme: setNextTheme } = useTheme()
+  const { recentTools, favorites, clearRecentTools, clearFavorites } = useToolStore()
+  const theme = nextTheme || "system"
 
   return (
     <DashboardLayout>
@@ -40,7 +43,7 @@ export default function SettingsPage() {
                   return (
                     <button
                       key={t.id}
-                      onClick={() => setTheme(t.id)}
+                      onClick={() => setNextTheme(t.id)}
                       className={`flex flex-col items-center gap-3 rounded-xl border p-6 text-center transition-all ${
                         isActive ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/30"
                       }`}

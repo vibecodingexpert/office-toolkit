@@ -108,7 +108,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           "md:ml-[72px] lg:ml-[260px]"
         )}
       >
-        <Navbar />
+        <Navbar variant="dashboard" />
 
         <main className="flex-1 pt-16">
           <AnimatePresence mode="wait">

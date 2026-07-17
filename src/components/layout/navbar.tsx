@@ -16,10 +16,15 @@ const navLinks = [
   { href: "/about", label: "About" },
 ]
 
-export function Navbar() {
+interface NavbarProps {
+  variant?: "default" | "dashboard"
+}
+
+export function Navbar({ variant = "default" }: NavbarProps) {
   const pathname = usePathname()
   const [isScrolled, setIsScrolled] = React.useState(false)
   const [isMobileOpen, setIsMobileOpen] = React.useState(false)
+  const isDashboard = variant === "dashboard"
 
   React.useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10)
@@ -34,11 +39,17 @@ export function Navbar() {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-40 h-16 transition-all duration-300",
+        "fixed top-0 z-40 h-16 transition-all duration-300",
+        isDashboard
+          ? "left-0 md:left-[72px] lg:left-[260px] right-0"
+          : "inset-x-0",
         isScrolled && "bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
       )}
     >
-      <nav className="mx-auto flex h-full max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
+      <nav className={cn(
+        "mx-auto flex h-full items-center gap-4 px-4 sm:px-6 lg:px-8",
+        isDashboard ? "max-w-none" : "max-w-7xl"
+      )}>
         <Link href="/" className="flex shrink-0 items-center gap-2.5 mr-6">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
             <FileText className="h-4 w-4 text-white" />
@@ -48,25 +59,27 @@ export function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-1 md:flex">
-          {navLinks.map((link) => {
-            const isActive = pathname === link.href || pathname.startsWith(link.href + "/")
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "relative rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {link.label}
-              </Link>
-            )
-          })}
-        </div>
+        {!isDashboard && (
+          <div className="hidden items-center gap-1 md:flex">
+            {navLinks.map((link) => {
+              const isActive = pathname === link.href || pathname.startsWith(link.href + "/")
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "relative rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {link.label}
+                </Link>
+              )
+            })}
+          </div>
+        )}
 
         <div className="flex-1" />
 
@@ -76,12 +89,14 @@ export function Navbar() {
 
         <ThemeToggle />
 
-        <Link href="/dashboard">
-          <Button variant="primary" size="sm">
-            <LayoutDashboard className="h-4 w-4 mr-1.5" />
-            Dashboard
-          </Button>
-        </Link>
+        {!isDashboard && (
+          <Link href="/dashboard">
+            <Button variant="primary" size="sm">
+              <LayoutDashboard className="h-4 w-4 mr-1.5" />
+              Dashboard
+            </Button>
+          </Link>
+        )}
 
         <motion.button
           whileHover={{ scale: 1.1 }}
