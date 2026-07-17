@@ -46,7 +46,7 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { isMobileSidebarOpen, setMobileSidebarOpen } = useToolStore()
+  const { isSidebarOpen, isMobileSidebarOpen, setMobileSidebarOpen } = useToolStore()
   const pathname = usePathname()
   const [mounted, setMounted] = React.useState(false)
 
@@ -105,7 +105,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div
         className={cn(
           "flex min-h-screen flex-col transition-all duration-300",
-          "md:ml-[72px] lg:ml-[260px]"
+          isSidebarOpen ? "md:ml-[260px]" : "md:ml-[72px]"
         )}
       >
         <Navbar variant="dashboard" />
