@@ -76,6 +76,82 @@ export function Sidebar() {
     [recentTools]
   )
 
+  const NavItem = ({
+    icon,
+    label,
+    isActive,
+    color,
+    onClick,
+    href,
+    showCount,
+    count,
+  }: {
+    icon: React.ReactNode
+    label: string
+    isActive?: boolean
+    color?: string
+    onClick?: () => void
+    href?: string
+    showCount?: boolean
+    count?: number
+  }) => {
+    const content = (
+      <div
+        className={cn(
+          "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+          isActive
+            ? "text-foreground"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+          !isSidebarOpen && "justify-center px-0"
+        )}
+      >
+        {isActive && (
+          <motion.div
+            layoutId="sidebar-active"
+            className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full"
+            style={{ backgroundColor: color || "hsl(var(--primary))" }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          />
+        )}
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-150",
+            isActive && color
+              ? "text-white shadow-sm"
+              : isActive
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground group-hover:text-foreground"
+          )}
+          style={isActive && color ? { backgroundColor: color } : {}}
+        >
+          {icon}
+        </div>
+        <AnimatePresence mode="wait">
+          {isSidebarOpen && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-1 items-center justify-between"
+            >
+              <span>{label}</span>
+              {showCount && (
+                <span className="text-[11px] text-muted-foreground">{count}</span>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    )
+
+    if (href) {
+      return <Link href={href}>{content}</Link>
+    }
+
+    return <button onClick={onClick} className="w-full">{content}</button>
+  }
+
   return (
     <motion.aside
       initial={false}
@@ -125,7 +201,7 @@ export function Sidebar() {
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-2 py-3">
+      <div className="flex-1 overflow-y-auto px-2 py-3 scrollbar-thin">
         {/* Categories */}
         <div className="space-y-0.5">
           <AnimatePresence mode="wait">
@@ -141,92 +217,31 @@ export function Sidebar() {
             )}
           </AnimatePresence>
 
-          {/* All Tools */}
-          <button
+          <NavItem
+            icon={<Sparkles className="h-4 w-4" />}
+            label="All Tools"
+            isActive={selectedCategory === "all" && isOnTools}
             onClick={() => {
               setSelectedCategory("all")
               if (!isOnTools) router.push("/tools")
             }}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              selectedCategory === "all" && isOnTools
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-              !isSidebarOpen && "justify-center px-0"
-            )}
-          >
-            <div
-              className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                selectedCategory === "all" && isOnTools
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <AnimatePresence mode="wait">
-              {isSidebarOpen && (
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  All Tools
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
+          />
 
-          {/* Category items */}
-          {categories.map((category) => {
-            const isActive = selectedCategory === category.id && isOnTools
-            return (
-              <button
-                key={category.id}
-                onClick={() => {
-                  setSelectedCategory(category.id)
-                  if (!isOnTools) router.push("/tools")
-                }}
-                className={cn(
-                  "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                  !isSidebarOpen && "justify-center px-0"
-                )}
-              >
-                <div
-                  className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-                    isActive
-                      ? "text-white shadow-sm"
-                      : "text-muted-foreground group-hover:text-foreground"
-                  )}
-                  style={isActive ? { backgroundColor: category.color } : {}}
-                >
-                  {categoryIcons[category.id]}
-                </div>
-                <AnimatePresence mode="wait">
-                  {isSidebarOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      transition={{ duration: 0.15 }}
-                      className="flex flex-1 items-center justify-between"
-                    >
-                      <span>{category.name}</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {category.toolCount}
-                      </span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </button>
-            )
-          })}
+          {categories.map((category) => (
+            <NavItem
+              key={category.id}
+              icon={categoryIcons[category.id]}
+              label={category.name}
+              isActive={selectedCategory === category.id && isOnTools}
+              color={category.color}
+              showCount
+              count={category.toolCount}
+              onClick={() => {
+                setSelectedCategory(category.id)
+                if (!isOnTools) router.push("/tools")
+              }}
+            />
+          ))}
         </div>
 
         {/* Favorites section */}
@@ -248,39 +263,18 @@ export function Sidebar() {
               )}
             </AnimatePresence>
             {favoriteTools.slice(0, 4).map((tool) => (
-              <Link
+              <NavItem
                 key={tool.id}
-                href={`/tools/${tool.slug}`}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent/50 hover:text-foreground",
-                  pathname === `/tools/${tool.slug}`
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground",
-                  !isSidebarOpen && "justify-center px-0"
-                )}
-              >
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: tool.color || "#6366f1" }}
-                >
+                icon={
                   <span className="text-xs font-bold text-white">
                     {tool.name.charAt(0)}
                   </span>
-                </div>
-                <AnimatePresence mode="wait">
-                  {isSidebarOpen && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      transition={{ duration: 0.15 }}
-                      className="truncate"
-                    >
-                      {tool.name}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </Link>
+                }
+                label={tool.name}
+                href={`/tools/${tool.slug}`}
+                isActive={pathname === `/tools/${tool.slug}`}
+                color={tool.color || "#6366f1"}
+              />
             ))}
           </div>
         )}
@@ -304,39 +298,18 @@ export function Sidebar() {
               )}
             </AnimatePresence>
             {recentToolItems.map((tool) => (
-              <Link
+              <NavItem
                 key={tool.id}
-                href={`/tools/${tool.slug}`}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent/50 hover:text-foreground",
-                  pathname === `/tools/${tool.slug}`
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground",
-                  !isSidebarOpen && "justify-center px-0"
-                )}
-              >
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: tool.color || "#6366f1" }}
-                >
+                icon={
                   <span className="text-xs font-bold text-white">
                     {tool.name.charAt(0)}
                   </span>
-                </div>
-                <AnimatePresence mode="wait">
-                  {isSidebarOpen && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      transition={{ duration: 0.15 }}
-                      className="truncate"
-                    >
-                      {tool.name}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </Link>
+                }
+                label={tool.name}
+                href={`/tools/${tool.slug}`}
+                isActive={pathname === `/tools/${tool.slug}`}
+                color={tool.color || "#6366f1"}
+              />
             ))}
           </div>
         )}
@@ -346,40 +319,14 @@ export function Sidebar() {
       <div className="border-t border-border px-2 py-2">
         {bottomLinks.map((link) => {
           const Icon = link.icon
-          const isActive = pathname === link.href
           return (
-            <Link
+            <NavItem
               key={link.label}
+              icon={<Icon className="h-4 w-4" />}
+              label={link.label}
               href={link.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                !isSidebarOpen && "justify-center px-0"
-              )}
-            >
-              <div
-                className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                  isActive ? "bg-accent" : ""
-                )}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-              <AnimatePresence mode="wait">
-                {isSidebarOpen && (
-                  <motion.span
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -10 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    {link.label}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </Link>
+              isActive={pathname === link.href}
+            />
           )
         })}
       </div>

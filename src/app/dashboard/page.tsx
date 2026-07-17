@@ -48,29 +48,29 @@ const stats = [
     label: "Total Tools",
     value: tools.length,
     icon: Wrench,
-    color: "text-primary",
-    bg: "bg-primary/10",
+    gradient: "from-primary/20 via-primary/5 to-transparent",
+    iconBg: "from-primary to-violet-500",
   },
   {
     label: "Categories",
     value: categories.length,
     icon: FolderOpen,
-    color: "text-cyan-500",
-    bg: "bg-cyan-500/10",
+    gradient: "from-cyan-500/20 via-cyan-500/5 to-transparent",
+    iconBg: "from-cyan-500 to-blue-500",
   },
   {
     label: "Popular Tools",
     value: popularTools.length,
     icon: TrendingUp,
-    color: "text-emerald-500",
-    bg: "bg-emerald-500/10",
+    gradient: "from-emerald-500/20 via-emerald-500/5 to-transparent",
+    iconBg: "from-emerald-500 to-teal-500",
   },
   {
     label: "Recently Used",
     value: "5",
     icon: Clock,
-    color: "text-violet-500",
-    bg: "bg-violet-500/10",
+    gradient: "from-violet-500/20 via-violet-500/5 to-transparent",
+    iconBg: "from-violet-500 to-purple-500",
   },
 ]
 
@@ -112,20 +112,24 @@ export default function DashboardPage() {
           {stats.map((stat) => (
             <Card
               key={stat.label}
-              className="relative overflow-hidden"
+              className="relative overflow-hidden group"
             >
-              <div className="flex items-start justify-between">
+              <div
+                className={cn(
+                  "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500",
+                  stat.gradient
+                )}
+              />
+              <div className="relative flex items-start justify-between">
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">{stat.label}</p>
                   <p className="text-2xl font-bold tracking-tight">{stat.value}</p>
                 </div>
-                <div
-                  className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-xl",
-                    stat.bg
-                  )}
-                >
-                  <stat.icon className={cn("h-5 w-5", stat.color)} />
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm ring-1 ring-white/10 transition-transform group-hover:scale-110 group-hover:shadow-md",
+                  stat.iconBg
+                )}>
+                  <stat.icon className="h-5 w-5" />
                 </div>
               </div>
             </Card>
@@ -136,7 +140,9 @@ export default function DashboardPage() {
         <motion.div variants={itemVariants}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
-              <Zap className="h-5 w-5 text-muted-foreground" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+                <Zap className="h-4 w-4 text-primary" />
+              </div>
               <h2 className="text-lg font-semibold">Quick Access</h2>
             </div>
             <Link
@@ -156,7 +162,9 @@ export default function DashboardPage() {
         {/* Browse by Category */}
         <motion.div variants={itemVariants}>
           <div className="flex items-center gap-2.5 mb-4">
-            <LayoutGrid className="h-5 w-5 text-muted-foreground" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+              <LayoutGrid className="h-4 w-4 text-primary" />
+            </div>
             <h2 className="text-lg font-semibold">Browse by Category</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -170,10 +178,10 @@ export default function DashboardPage() {
               >
                 <Link
                   href={`/tools?category=${category.id}`}
-                  className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-primary/20 group"
+                  className="group relative flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-primary/20"
                 >
                   <div
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm ring-1 ring-white/10 transition-transform group-hover:scale-110"
                     style={{ backgroundColor: category.color }}
                   >
                     {categoryIcons[category.id] || <FileText className="h-5 w-5" />}

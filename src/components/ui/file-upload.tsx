@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useDropzone, type DropzoneOptions } from "react-dropzone"
+import { useDropzone } from "react-dropzone"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils/cn"
 import {
@@ -14,7 +14,7 @@ import {
   FileImage,
   FileArchive,
   FileMusic,
-  FileVideoCamera,
+  FileVideo2,
   FileCode,
 } from "lucide-react"
 
@@ -45,7 +45,7 @@ function getFileIcon(name: string) {
   if (["mp3", "wav", "ogg", "flac"].includes(ext || ""))
     return <FileMusic className="h-5 w-5" />
   if (["mp4", "avi", "mkv", "mov"].includes(ext || ""))
-    return <FileVideoCamera className="h-5 w-5" />
+    return <FileVideo2 className="h-5 w-5" />
   if (["js", "ts", "jsx", "tsx", "py", "java", "css", "html"].includes(ext || ""))
     return <FileCode className="h-5 w-5" />
   return <File className="h-5 w-5" />
@@ -78,7 +78,6 @@ export function FileUpload({
       const total = [...files, ...newFiles].slice(0, maxFiles)
       setFiles(total)
 
-      // Simulate upload progress
       newFiles.forEach((f) => {
         let progress = 0
         const interval = setInterval(() => {
@@ -143,62 +142,56 @@ export function FileUpload({
         initial={false}
         animate={
           isDragActive
-            ? { scale: 1.01, borderColor: "var(--primary)" }
+            ? { scale: 1.01 }
             : { scale: 1 }
         }
         {...(getRootProps() as React.ComponentPropsWithoutRef<typeof motion.div>)}
         className={cn(
-          "relative cursor-pointer rounded-2xl border-2 border-dashed border-border bg-background p-8 text-center transition-all duration-200 hover:border-primary/50 hover:bg-primary/[0.02]",
-          isDragActive && "border-primary bg-primary/5",
-          isDragReject && "border-destructive bg-destructive/5",
-          files.length >= maxFiles && "pointer-events-none opacity-50"
+          "relative cursor-pointer rounded-2xl border-2 border-dashed transition-all duration-200",
+          "bg-gradient-to-br from-background via-background to-primary/[0.01]",
+          files.length >= maxFiles
+            ? "border-muted opacity-50 pointer-events-none"
+            : isDragReject
+              ? "border-destructive bg-destructive/5"
+              : isDragActive
+                ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
+                : "border-border hover:border-primary/40 hover:bg-primary/[0.02]",
         )}
       >
         <input {...getInputProps()} />
-
-        <motion.div
-          animate={
-            isDragActive
-              ? { y: -4, scale: 1.05 }
-              : { y: 0, scale: 1 }
-          }
-          className="flex flex-col items-center gap-3"
-        >
+        <div className="flex flex-col items-center gap-4 px-6 py-10 sm:py-14">
           <motion.div
-            animate={
-              isDragActive
-                ? { rotate: [0, -10, 10, -10, 0] }
-                : {}
-            }
-            transition={{ duration: 0.5 }}
-            className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 shadow-sm ring-1 ring-primary/10"
+            animate={isDragActive ? { rotate: [0, -8, 8, -8, 0], scale: 1.1 } : {}}
+            transition={{ duration: 0.4 }}
+            className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-violet-500/10 shadow-sm ring-1 ring-primary/10"
           >
             <Upload
               className={cn(
-                "h-6 w-6 transition-colors",
+                "h-7 w-7 transition-colors",
                 isDragActive ? "text-primary" : "text-muted-foreground"
               )}
             />
           </motion.div>
-
-          <div className="space-y-1">
+          <div className="space-y-1.5 text-center">
             <p className="text-sm font-medium text-foreground">
               {isDragActive ? (
                 <span className="text-primary">Drop files here</span>
               ) : (
                 <>
-                  Drag & drop files or <span className="text-primary underline underline-offset-2">browse</span>
+                  <span className="text-foreground">Drag & drop</span> or{" "}
+                  <span className="text-primary font-semibold underline underline-offset-4 decoration-primary/30 hover:decoration-primary transition-all cursor-pointer">
+                    choose files
+                  </span>
                 </>
               )}
             </p>
             <p className="text-xs text-muted-foreground">
-              Up to {maxFiles} files, {formatSize(maxSize)} each
+              Up to {maxFiles} file{maxFiles > 1 ? "s" : ""} · {formatSize(maxSize)} max each
             </p>
           </div>
-        </motion.div>
+        </div>
       </motion.div>
 
-      {/* File previews */}
       <AnimatePresence>
         {files.map((filePreview) => (
           <motion.div
@@ -208,12 +201,12 @@ export function FileUpload({
             exit={{ opacity: 0, y: -10, height: 0 }}
             transition={{ duration: 0.2 }}
             className={cn(
-              "flex items-center gap-3 rounded-xl border p-3 transition-colors",
+              "flex items-center gap-3 rounded-xl border p-3.5 transition-colors",
               filePreview.status === "error"
                 ? "border-destructive/30 bg-destructive/5"
                 : filePreview.status === "complete"
                   ? "border-emerald-500/30 bg-emerald-500/5"
-                  : "border-border bg-card"
+                  : "border-border bg-card shadow-sm"
             )}
           >
             <div
@@ -260,7 +253,7 @@ export function FileUpload({
                       initial={{ width: 0 }}
                       animate={{ width: `${filePreview.progress}%` }}
                       transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="h-full rounded-full bg-gradient-to-r from-primary to-violet-500"
+                      className="h-full rounded-full bg-gradient-to-r from-primary via-cyan-500 to-violet-500"
                     />
                   </div>
                 </div>
@@ -273,7 +266,7 @@ export function FileUpload({
               )}
 
               {filePreview.status === "complete" && (
-                <p className="mt-0.5 text-xs text-emerald-500">
+                <p className="mt-0.5 text-xs text-emerald-500 font-medium">
                   Upload complete
                 </p>
               )}
