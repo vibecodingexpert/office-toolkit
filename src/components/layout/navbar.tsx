@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils/cn"
+import { useToolStore } from "@/lib/store/use-tool-store"
 import { SearchBar } from "@/components/ui/search-bar"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -22,6 +23,7 @@ interface NavbarProps {
 
 export function Navbar({ variant = "default" }: NavbarProps) {
   const pathname = usePathname()
+  const isSidebarOpen = useToolStore((s) => s.isSidebarOpen)
   const [isScrolled, setIsScrolled] = React.useState(false)
   const [isMobileOpen, setIsMobileOpen] = React.useState(false)
   const isDashboard = variant === "dashboard"
@@ -41,8 +43,10 @@ export function Navbar({ variant = "default" }: NavbarProps) {
       className={cn(
         "fixed top-0 z-40 h-16 transition-all duration-300",
         isDashboard
-          ? "left-0 md:left-[72px] lg:left-[260px] right-0 bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
+          ? "right-0 bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
           : "inset-x-0",
+        isDashboard && isSidebarOpen && "md:left-[260px]",
+        isDashboard && !isSidebarOpen && "md:left-[72px]",
         !isDashboard && isScrolled && "bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
       )}
     >
@@ -50,14 +54,16 @@ export function Navbar({ variant = "default" }: NavbarProps) {
         "mx-auto flex h-full items-center gap-4 px-4 sm:px-6 lg:px-8",
         isDashboard ? "max-w-none" : "max-w-7xl"
       )}>
-        <Link href="/" className="flex shrink-0 items-center gap-2.5 mr-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
-            <FileText className="h-4 w-4 text-white" />
-          </div>
-          <span className="hidden text-base font-bold tracking-tight sm:block">
-            OfficeToolkit
-          </span>
-        </Link>
+        {!isDashboard && (
+          <Link href="/" className="flex shrink-0 items-center gap-2.5 mr-6">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
+              <FileText className="h-4 w-4 text-white" />
+            </div>
+            <span className="hidden text-base font-bold tracking-tight sm:block">
+              OfficeToolkit
+            </span>
+          </Link>
+        )}
 
         {!isDashboard && (
           <div className="hidden items-center gap-1 md:flex">
