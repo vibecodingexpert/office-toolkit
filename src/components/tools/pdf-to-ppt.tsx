@@ -8,9 +8,9 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import { PDFDocument } from "pdf-lib"
-import JSZip from "jszip"
+import PptxGenJS from "pptxgenjs"
 import {
-  Upload, Download, FileText, Check, X, FileDown, Monitor, Archive, Image,
+  Upload, FileText, Check, X, Monitor, FileDown,
 } from "lucide-react"
 
 interface FileInfo {
@@ -41,7 +41,7 @@ export function PdfToPpt() {
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [slides, setSlides] = React.useState<SlideImage[]>([])
-  const [zipUrl, setZipUrl] = React.useState<string | null>(null)
+  const [pptxUrl, setPptxUrl] = React.useState<string | null>(null)
 
   const handleFile = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -61,7 +61,7 @@ export function PdfToPpt() {
         pdfUrl: url,
       })
       setSlides([])
-      setZipUrl(null)
+      setPptxUrl(null)
       setProgress(0)
       setIsProcessing(false)
     } catch {
@@ -71,14 +71,14 @@ export function PdfToPpt() {
 
   const removeFile = React.useCallback(() => {
     slides.forEach((s) => URL.revokeObjectURL(s.url))
-    if (zipUrl) URL.revokeObjectURL(zipUrl)
+    if (pptxUrl) URL.revokeObjectURL(pptxUrl)
     if (fileInfo?.pdfUrl) URL.revokeObjectURL(fileInfo.pdfUrl)
     setFileInfo(null)
     setSlides([])
-    setZipUrl(null)
+    setPptxUrl(null)
     setProgress(0)
     setIsProcessing(false)
-  }, [slides, zipUrl, fileInfo])
+  }, [slides, pptxUrl, fileInfo])
 
   const process = React.useCallback(async () => {
     if (!fileInfo) return
@@ -89,73 +89,79 @@ export function PdfToPpt() {
     try {
       const pageCount = Math.min(fileInfo.pages, 20)
       const genSlides: SlideImage[] = []
-      const zip = new JSZip()
 
-      for (let i = 0; i < pageCount; i++) {
-        setProgress(Math.round(((i) / pageCount) * 95))
+      const pdfjsLib = await import("pdfjs-dist")
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+
+      const arrayBuffer = await fileInfo.file.arrayBuffer()
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise
+
+      const pptx = new PptxGenJS()
+
+      for (let i = 1; i <= pageCount; i++) {
+        setProgress(Math.round(((i - 1) / pageCount) * 95))
+
+        const page = await pdfDoc.getPage(i)
+        const viewport = page.getViewport({ scale: 1.5 })
+
         const canvas = document.createElement("canvas")
-        canvas.width = 960
-        canvas.height = 540
-        const ctx = canvas.getContext("2d")
-        if (ctx) {
-          ctx.fillStyle = "#ffffff"
-          ctx.fillRect(0, 0, 960, 540)
-          ctx.fillStyle = "#0d9488"
-          ctx.fillRect(0, 0, 960, 8)
-          ctx.fillStyle = "#1e293b"
-          ctx.font = "bold 28px sans-serif"
-          ctx.textAlign = "center"
-          ctx.fillText(`Slide ${i + 1}`, 480, 100)
-          ctx.font = "16px sans-serif"
-          ctx.fillStyle = "#64748b"
-          ctx.fillText(`From: ${fileInfo.file.name}`, 480, 140)
-          ctx.font = "14px sans-serif"
-          ctx.fillStyle = "#94a3b8"
-          ctx.fillText(`Page ${i + 1} of ${fileInfo.pages}`, 480, 170)
-          const gradient = ctx.createLinearGradient(200, 250, 760, 450)
-          gradient.addColorStop(0, `hsl(${190 + i * 25}, 70%, 45%)`)
-          gradient.addColorStop(1, `hsl(${170 + i * 25}, 60%, 35%)`)
-          ctx.fillStyle = gradient
-          ctx.beginPath()
-          ctx.roundRect(200, 250, 560, 200, 16)
-          ctx.fill()
-          ctx.fillStyle = "#ffffff"
-          ctx.font = "bold 18px sans-serif"
-          ctx.fillText(`PDF Page ${i + 1}`, 480, 340)
-          ctx.font = "13px sans-serif"
-          ctx.fillStyle = "rgba(255,255,255,0.7)"
-          ctx.fillText("Converted with Office Toolkit Pro", 480, 370)
-        }
-        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.92))
-        if (blob) {
-          const url = URL.createObjectURL(blob)
-          genSlides.push({ id: crypto.randomUUID(), url, page: i + 1, size: blob.size })
-          zip.file(`slide_${(i + 1).toString().padStart(2, "0")}.jpg`, blob)
-        }
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        const ctx = canvas.getContext("2d")!
+
+        await page.render({ canvas: canvas, canvasContext: ctx, viewport }).promise
+
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((b) => {
+            if (b) resolve(b)
+            else reject(new Error("Canvas to blob failed"))
+          }, "image/png")
+        })
+
+        const base64DataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        })
+
+        const url = URL.createObjectURL(blob)
+        genSlides.push({ id: crypto.randomUUID(), url, page: i, size: blob.size })
+
+        const slide = pptx.addSlide()
+        slide.addImage({
+          data: base64DataUrl,
+          x: 0,
+          y: 0,
+          w: pptx.presLayout.width,
+          h: pptx.presLayout.height,
+        })
       }
 
       setProgress(100)
       setSlides(genSlides)
-      const zipContent = await zip.generateAsync({ type: "blob" })
-      const zipUrl = URL.createObjectURL(zipContent)
-      setZipUrl(zipUrl)
+
+      const pptxBlob = (await pptx.write({ outputType: "blob" })) as Blob
+      const url = URL.createObjectURL(pptxBlob)
+      setPptxUrl(url)
+
       const totalSize = genSlides.reduce((s, sl) => s + sl.size, 0)
       setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize: totalSize } : prev)
-      toast.success(`Created ${genSlides.length} slide image(s) from PDF!`)
+      toast.success(`Created PowerPoint presentation with ${genSlides.length} slide(s)!`)
     } catch {
-      toast.error("Failed to generate slides")
+      toast.error("Failed to generate presentation")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     }
     setIsProcessing(false)
   }, [fileInfo])
 
   const downloadAll = React.useCallback(() => {
-    if (!zipUrl) return
+    if (!pptxUrl) return
     const a = document.createElement("a")
-    a.href = zipUrl
-    a.download = (fileInfo?.file.name.replace(/\.pdf$/i, "") || "presentation") + "_slides.zip"
+    a.href = pptxUrl
+    a.download = (fileInfo?.file.name.replace(/\.pdf$/i, "") || "presentation") + ".pptx"
     a.click()
-  }, [zipUrl, fileInfo])
+  }, [pptxUrl, fileInfo])
 
   return (
     <Card className="space-y-6 p-6">
@@ -165,7 +171,7 @@ export function PdfToPpt() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">PDF to PowerPoint</h2>
-          <p className="text-sm text-muted-foreground">Convert each PDF page into presentation slide images</p>
+          <p className="text-sm text-muted-foreground">Convert each PDF page into a PowerPoint presentation</p>
         </div>
       </div>
 
@@ -221,7 +227,7 @@ export function PdfToPpt() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                Creating slides ({Math.min(fileInfo.pages, 20)} pages → slide images)...
+                Creating slides ({Math.min(fileInfo.pages, 20)} pages → PPTX)...
               </div>
               <ProgressBar value={progress} variant="gradient" size="lg" showPercentage />
             </div>
@@ -235,8 +241,8 @@ export function PdfToPpt() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-foreground">{slides.length} Slide(s) Generated</p>
-                <Button size="sm" variant="primary" onClick={downloadAll} icon={<Archive className="h-3.5 w-3.5" />}>
-                  Download All (ZIP)
+                <Button size="sm" variant="primary" onClick={downloadAll} icon={<FileDown className="h-3.5 w-3.5" />}>
+                  Download PPTX
                 </Button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -252,7 +258,7 @@ export function PdfToPpt() {
               </div>
               <div className="rounded-xl bg-amber-500/5 border border-amber-500/20 p-3">
                 <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Slides are saved as JPG images. Open the ZIP and import them into PowerPoint, Google Slides, or any presentation software.
+                  Each page is rendered as a slide in the PPTX file. Open it directly in PowerPoint, Google Slides, or Keynote.
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={removeFile} className="w-full">

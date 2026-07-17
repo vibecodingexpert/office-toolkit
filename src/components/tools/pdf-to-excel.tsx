@@ -8,6 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import { PDFDocument } from "pdf-lib"
+import * as ExcelJS from "exceljs"
 import {
   Upload, Download, FileText, Check, X, FileDown, Table2, Regex,
 } from "lucide-react"
@@ -97,34 +98,87 @@ export function PdfToExcel() {
     setFileInfo((prev) => prev ? { ...prev, status: "converting" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 10
-        return next >= 95 ? 95 : next
-      })
-    }, 200)
-    await new Promise((r) => setTimeout(r, 2000 + fileInfo.pages * 300 + Math.random() * 1500))
-    clearInterval(interval)
-    setProgress(100)
 
-    const csvContent = [
-      `"Extracted from: ${fileInfo.file.name}"`,
-      `"Pages: ${fileInfo.pages}"`,
-      `"Detection mode: ${detectionMode}"`,
-      "",
-      `"Page","Width","Height"`,
-      ...fileInfo.pageSizes.map((ps, i) => `"${i + 1}","${ps.width}","${ps.height}"`),
-      "",
-      `"Extraction Date: ${new Date().toLocaleDateString()}"`,
-      `"Note: This is a metadata extraction. Full table extraction requires a server-side tool."`,
-    ].join("\n")
+    try {
+      const pdfjsLib = await import("pdfjs-dist")
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
 
-    const blob = new Blob([csvContent], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
-    const url = URL.createObjectURL(blob)
-    const convertedSize = Math.round(fileInfo.file.size * (0.3 + Math.random() * 0.3))
-    setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize, convertedUrl: url } : prev)
-    setIsProcessing(false)
-    toast.success("PDF data extracted to Excel successfully!")
+      const fileData = await fileInfo.file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: fileData }).promise
+
+      const allPages = Array.from({ length: pdf.numPages }, (_, i) => i + 1)
+      let pagesToProcess: number[]
+      if (pageRange.trim()) {
+        pagesToProcess = []
+        for (const part of pageRange.trim().split(",").map((s) => s.trim())) {
+          if (part.includes("-")) {
+            const [start, end] = part.split("-").map(Number)
+            for (let i = start; i <= end; i++) {
+              if (i >= 1 && i <= pdf.numPages) pagesToProcess.push(i)
+            }
+          } else {
+            const p = Number(part)
+            if (p >= 1 && p <= pdf.numPages) pagesToProcess.push(p)
+          }
+        }
+      } else {
+        pagesToProcess = allPages
+      }
+
+      const workbook = new ExcelJS.Workbook()
+      const totalPages = pagesToProcess.length
+      let completedPages = 0
+
+      for (const pageNum of pagesToProcess) {
+        const page = await pdf.getPage(pageNum)
+        const textContent = await page.getTextContent()
+
+        const items = (textContent.items as any[])
+          .filter((item) => item.str?.trim())
+          .sort((a, b) => {
+            const aY = Math.round(a.transform[5])
+            const bY = Math.round(b.transform[5])
+            if (aY !== bY) return bY - aY
+            return a.transform[4] - b.transform[4]
+          })
+
+        const rows: { y: number; items: { x: number; text: string }[] }[] = []
+        for (const item of items) {
+          const y = Math.round(item.transform[5])
+          const x = Math.round(item.transform[4])
+          let row = rows.find((r) => Math.abs(r.y - y) <= 5)
+          if (!row) {
+            row = { y, items: [] }
+            rows.push(row)
+          }
+          row.items.push({ x, text: item.str })
+        }
+        rows.sort((a, b) => b.y - a.y)
+        for (const row of rows) row.items.sort((a, b) => a.x - b.x)
+
+        const ws = workbook.addWorksheet(`Page ${pageNum}`)
+        rows.forEach((row, ri) => {
+          row.items.forEach((item, ci) => {
+            ws.getCell(ri + 1, ci + 1).value = item.text
+          })
+        })
+
+        completedPages++
+        setProgress(Math.round((completedPages / totalPages) * 100))
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+      const url = URL.createObjectURL(blob)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize: blob.size, convertedUrl: url } : prev)
+      setIsProcessing(false)
+      toast.success("PDF data extracted to Excel successfully!")
+    } catch (err) {
+      setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
+      setIsProcessing(false)
+      toast.error("Failed to extract PDF content")
+      console.error(err)
+    }
   }, [fileInfo, pageRange, detectionMode, validateRange])
 
   const download = React.useCallback(() => {

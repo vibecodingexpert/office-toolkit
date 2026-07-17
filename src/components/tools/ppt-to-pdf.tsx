@@ -8,6 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib"
+import JSZip from "jszip"
 import {
   Upload, Download, FileText, Check, X, FileDown, Monitor,
 } from "lucide-react"
@@ -27,12 +28,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function estimateSlides(size: number): number {
-  if (size < 50000) return 1
-  if (size < 200000) return Math.max(2, Math.floor(size / 60000))
-  return Math.max(3, Math.floor(size / 100000))
-}
-
 const aspectRatios = [
   { value: "16:9", label: "Widescreen (16:9)" },
   { value: "4:3", label: "Standard (4:3)" },
@@ -44,20 +39,35 @@ export function PptToPdf() {
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [aspectRatio, setAspectRatio] = React.useState("16:9")
+  const fileBufferRef = React.useRef<ArrayBuffer | null>(null)
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    setFileInfo({
-      id: crypto.randomUUID(),
-      file: f,
-      slides: estimateSlides(f.size),
-      status: "idle",
-      convertedSize: 0,
-      convertedUrl: null,
-    })
-    setProgress(0)
-    setIsProcessing(false)
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      try {
+        const arrayBuffer = event.target?.result as ArrayBuffer
+        const zip = await JSZip.loadAsync(arrayBuffer)
+        const slideFiles = Object.keys(zip.files)
+          .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+        fileBufferRef.current = arrayBuffer
+        setFileInfo({
+          id: crypto.randomUUID(),
+          file: f,
+          slides: slideFiles.length,
+          status: "idle",
+          convertedSize: 0,
+          convertedUrl: null,
+        })
+        setProgress(0)
+        setIsProcessing(false)
+      } catch {
+        toast.error("Failed to read PPTX file. Make sure it's a valid PowerPoint file.")
+      }
+    }
+    reader.onerror = () => { toast.error("Failed to read file") }
+    reader.readAsArrayBuffer(f)
   }, [])
 
   const removeFile = React.useCallback(() => {
@@ -67,12 +77,65 @@ export function PptToPdf() {
     setIsProcessing(false)
   }, [fileInfo])
 
+  function decodeXmlEntities(text: string): string {
+    return text
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, num) => String.fromCodePoint(parseInt(num, 10)))
+  }
+
+  function wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+    const words = text.split(/\s+/)
+    const lines: string[] = []
+    let line = ""
+    for (const word of words) {
+      const testLine = line ? line + " " + word : word
+      if (font.widthOfTextAtSize(testLine, fontSize) > maxWidth && line) {
+        lines.push(line)
+        line = word
+      } else {
+        line = testLine
+      }
+    }
+    if (line) lines.push(line)
+    return lines
+  }
+
   const convert = React.useCallback(async () => {
     if (!fileInfo) return
     setFileInfo((prev) => prev ? { ...prev, status: "converting" } : prev)
     setIsProcessing(true)
     setProgress(0)
     try {
+      const arrayBuffer = fileBufferRef.current
+      if (!arrayBuffer) { toast.error("File data not available. Please re-upload."); return }
+
+      const zip = await JSZip.loadAsync(arrayBuffer)
+      const slideFiles = Object.keys(zip.files)
+        .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+        .sort((a, b) => {
+          const na = parseInt(a.match(/\d+/)?.[0] || "0", 10)
+          const nb = parseInt(b.match(/\d+/)?.[0] || "0", 10)
+          return na - nb
+        })
+
+      const slideTexts: string[] = []
+      for (const slidePath of slideFiles) {
+        const xmlStr = await zip.files[slidePath].async("string")
+        const texts: string[] = []
+        const regex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g
+        let match
+        while ((match = regex.exec(xmlStr)) !== null) {
+          const text = match[1].trim()
+          if (text) texts.push(decodeXmlEntities(text))
+        }
+        slideTexts.push(texts.join("\n"))
+      }
+
       const ratioMap: Record<string, [number, number]> = {
         "16:9": [595.28, 334.85],
         "4:3": [595.28, 446.46],
@@ -82,43 +145,37 @@ export function PptToPdf() {
       const pdfDoc = await PDFDocument.create()
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
 
-      for (let i = 0; i < fileInfo.slides; i++) {
-        setProgress(Math.round(((i) / fileInfo.slides) * 95))
+      for (let i = 0; i < slideTexts.length; i++) {
+        setProgress(Math.round((i / slideTexts.length) * 95))
         const page = pdfDoc.addPage([pw, ph])
         const { width, height } = page.getSize()
 
-        page.drawRectangle({
-          x: 0, y: 0,
-          width, height,
-          color: rgb(0.98, 0.98, 0.98),
-        })
-        page.drawRectangle({
-          x: 0, y: height - 6,
-          width, height: 6,
-          color: rgb(0.05, 0.58, 0.53),
-        })
-        page.drawText(`Slide ${i + 1}`, {
-          x: 40, y: height - 80,
-          size: 28,
-          font,
-          color: rgb(0.1, 0.1, 0.1),
-        })
-        page.drawText(`Converted from: ${fileInfo.file.name}`, {
-          x: 40, y: height - 110,
-          size: 12,
-          font,
-          color: rgb(0.5, 0.5, 0.5),
-        })
-        page.drawText(`Generated by Office Toolkit Pro`, {
-          x: 40, y: height - 130,
-          size: 10,
-          font,
-          color: rgb(0.6, 0.6, 0.6),
-        })
-        page.drawText(`— Slide ${i + 1} of ${fileInfo.slides} —`, {
-          x: width / 2 - 50, y: 40,
-          size: 10,
-          font,
+        page.drawRectangle({ x: 0, y: 0, width, height, color: rgb(0.98, 0.98, 0.98) })
+        page.drawRectangle({ x: 0, y: height - 6, width, height: 6, color: rgb(0.05, 0.58, 0.53) })
+
+        page.drawText(`Slide ${i + 1}`, { x: 40, y: height - 80, size: 28, font, color: rgb(0.1, 0.1, 0.1) })
+        page.drawText(`From: ${fileInfo.file.name}`, { x: 40, y: height - 110, size: 12, font, color: rgb(0.5, 0.5, 0.5) })
+
+        const content = slideTexts[i]
+        const margin = 40
+        const maxWidth = width - margin * 2
+        const fontSize = 11
+        const lineHeight = 16
+        let yPos = height - 150
+
+        if (content) {
+          const lines = wrapText(content, font, fontSize, maxWidth)
+          for (const line of lines) {
+            if (yPos < 60) break
+            page.drawText(line, { x: margin, y: yPos, size: fontSize, font, color: rgb(0.2, 0.2, 0.2) })
+            yPos -= lineHeight
+          }
+        } else {
+          page.drawText("(No slide content found)", { x: margin, y: yPos, size: 14, font, color: rgb(0.6, 0.6, 0.6) })
+        }
+
+        page.drawText(`— Slide ${i + 1} of ${slideTexts.length} —`, {
+          x: width / 2 - 50, y: 40, size: 10, font,
           color: rgb(0.6, 0.6, 0.6),
         })
       }
@@ -128,7 +185,7 @@ export function PptToPdf() {
       const pdfBlob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       const url = URL.createObjectURL(pdfBlob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", convertedSize: pdfBlob.size, convertedUrl: url } : prev)
-      toast.success(`PowerPoint converted to PDF (${fileInfo.slides} slides)!`)
+      toast.success(`PowerPoint converted to PDF (${slideTexts.length} slides)!`)
     } catch {
       toast.error("Failed to generate PDF")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
@@ -191,7 +248,7 @@ export function PptToPdf() {
               <p className="text-sm font-medium text-foreground truncate">{fileInfo.file.name}</p>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
-                <span>Slides (est.): {fileInfo.slides}</span>
+                <span>Slides: {fileInfo.slides}</span>
                 {fileInfo.status === "done" && (
                   <>
                     <span>PDF: {formatSize(fileInfo.convertedSize)}</span>
@@ -233,7 +290,7 @@ export function PptToPdf() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">Estimated {fileInfo.slides} slide(s) will be created</p>
+              <p className="text-xs text-muted-foreground">{fileInfo.slides} slide(s) detected</p>
             </div>
           )}
 
@@ -266,11 +323,6 @@ export function PptToPdf() {
                 <Button size="sm" variant="primary" onClick={download} icon={<Download className="h-3.5 w-3.5" />}>
                   Download PDF
                 </Button>
-              </div>
-              <div className="rounded-xl bg-amber-500/5 border border-amber-500/20 p-3">
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Slide content is shown as placeholders. Full PPT-to-PDF conversion requires a server-side tool for accurate rendering.
-                </p>
               </div>
               <Button variant="ghost" size="sm" onClick={removeFile} className="w-full">
                 Convert another file

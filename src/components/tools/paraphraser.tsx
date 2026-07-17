@@ -46,7 +46,6 @@ const SYNONYM_DB: Record<string, string[]> = {
 }
 
 function replaceWithSynonyms(text: string, density: number): string {
-  let result = text
   const words = text.split(/\b/)
   for (let i = 0; i < words.length; i++) {
     const word = words[i].toLowerCase().replace(/[^a-z]/g, "")
@@ -64,46 +63,56 @@ function replaceWithSynonyms(text: string, density: number): string {
 
 function generateVariants(text: string, mode: string, count: number): string[] {
   const variants: string[] = []
+  const densities: Record<string, number> = {
+    standard: 0.4,
+    fluency: 0.25,
+    formal: 0.35,
+    creative: 0.5,
+    concise: 0.2,
+  }
+  const density = densities[mode] ?? 0.3
   const templates = getTemplates(mode)
   for (let i = 0; i < count; i++) {
     const template = templates[i % templates.length]
-    const withSynonyms = replaceWithSynonyms(template(text), mode === "standard" ? 0.4 : mode === "creative" ? 0.3 : 0.2)
+    const transformed = template(text)
+    const withSynonyms = replaceWithSynonyms(transformed, density)
     variants.push(withSynonyms)
   }
   return variants
 }
 
 function getTemplates(mode: string): ((text: string) => string)[] {
+  const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
   switch (mode) {
     case "creative":
       return [
-        () => "The landscape of modern business has been fundamentally reshaped by artificial intelligence, ushering in a new era of operational excellence. Forward-thinking organizations are weaving AI into the fabric of their operations—automating complex workflows, extracting profound insights from their data, and crafting exceptional customer journeys. This technological renaissance is leaving its mark on every corner of the business world.",
-        () => "In the grand theater of commerce, artificial intelligence has taken center stage, rewriting the script of how enterprises perform their daily symphony. Pioneering companies are choreographing AI into their core routines—orchestrating automated workflows, unearthing hidden patterns in data oceans, and composing personalized experiences that captivate their audience. No industry remains untouched by this performance revolution.",
-        () => "A magnificent transformation is unfolding across the business universe, powered by the brilliant force of artificial intelligence. Visionary companies are dancing with AI—letting it handle the mundane while they focus on the magnificent. They're diving deep into oceans of data to discover pearls of wisdom, and crafting customer experiences that feel like magic. This wave of innovation is washing over every shore of industry.",
+        (text) => "Imagine this: " + lowerFirst(text),
+        (text) => "Picture this: " + lowerFirst(text),
+        (text) => "Consider this: " + lowerFirst(text),
       ]
     case "formal":
       return [
-        () => "The business landscape has been significantly transformed by artificial intelligence in contemporary times. Organizations are increasingly implementing AI technologies to automate operational processes, extract actionable insights from data, and enhance customer experiences. The ramifications of this technology are being observed across all industrial sectors.",
-        () => "The integration of artificial intelligence has materially altered operational paradigms within the modern business environment. Enterprises are progressively incorporating AI-driven solutions to automate critical processes, derive strategic insights from analytical data, and optimize customer engagement initiatives. The influence of these technologies permeates all industry verticals.",
-        () => "Artificial intelligence has precipitated a fundamental transformation in contemporary business operations. Corporate entities are systematically deploying AI capabilities to automate operational workflows, derive analytical intelligence from organizational data, and augment the quality of customer interactions. The pervasive influence of this technology extends across the entire spectrum of industrial activity.",
+        (text) => "It is evident that " + lowerFirst(text),
+        (text) => "One may observe that " + lowerFirst(text),
+        (text) => "It should be noted that " + lowerFirst(text),
       ]
     case "fluency":
       return [
-        () => "Artificial intelligence has dramatically changed the way businesses work today. Many companies are now using AI to handle routine tasks automatically, find useful patterns in their data, and give customers better service. This technology is making a real difference in every type of industry.",
-        () => "AI has changed the game for businesses everywhere. Companies now use smart technology to do boring jobs automatically, find important information hidden in their data, and make their customers happier. You can see AI working in pretty much every field you can think of.",
-        () => "Things have really changed for businesses thanks to AI. Smart companies are using AI tools to take care of repetitive work so their people can focus on more important tasks. They use data to figure out what's working and what needs to change, and they create better experiences for their customers. This is happening in every kind of business you can imagine.",
+        (text) => "Ultimately, " + lowerFirst(text),
+        (text) => text,
+        (text) => "In essence, " + lowerFirst(text),
       ]
     case "concise":
       return [
-        () => "AI has revolutionized modern business. Companies use it to automate processes, gain data insights, and improve customer experiences. The impact spans every industry.",
-        () => "AI is transforming business operations globally. Organizations leverage it for automation, data analysis, and enhanced customer service. Every sector feels its influence.",
-        () => "Artificial intelligence is reshaping business. Firms adopt AI for automation, insights, and better customer experiences. No industry is untouched by this change.",
+        (text) => text.replace(/\b(very|really|quite|basically|actually|just|truly|literally|honestly)\b/gi, "").replace(/\s{2,}/g, " ").trim(),
+        (text) => text.replace(/\b(in order to)\b/gi, "to").replace(/\b(due to the fact that)\b/gi, "because").replace(/\b(at this point in time)\b/gi, "now").replace(/\b(a large number of)\b/gi, "many").replace(/\b(the majority of)\b/gi, "most"),
+        (text) => text.replace(/\b(it is worth noting that|it should be noted that|it is important to)\b/gi, "").replace(/\b(in a timely manner)\b/gi, "promptly").replace(/\s{2,}/g, " ").trim(),
       ]
     default:
       return [
-        () => "Artificial intelligence has fundamentally changed how modern businesses operate. Companies are embracing AI technologies to streamline processes, extract meaningful insights from data, and deliver superior customer experiences. This transformation is evident across every industry and sector.",
-        () => "The way businesses operate in today's world has been completely redefined by artificial intelligence. Organizations across the board are leveraging AI solutions to automate their operations, derive actionable intelligence from data, and elevate the customer experience. Every industry is experiencing this shift.",
-        () => "Artificial intelligence has brought about a paradigm shift in how companies conduct their business in the modern era. Forward-thinking organizations are harnessing AI capabilities to automate routine operations, unlock valuable insights from their data repositories, and create enhanced customer experiences. The far-reaching effects of this technological advancement span every business sector.",
+        (text) => text,
+        (text) => text,
+        (text) => text,
       ]
   }
 }

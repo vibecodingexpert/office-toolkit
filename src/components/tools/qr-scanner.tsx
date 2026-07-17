@@ -3,6 +3,7 @@
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils/cn"
+import jsQR from "jsqr"
 import {
   QrCode,
   Camera,
@@ -53,7 +54,7 @@ export function QRScanner() {
     setScanning(false)
   }
 
-  // Simulated QR scan from camera frames
+  // Decode QR from camera frames using jsQR
   React.useEffect(() => {
     if (!scanning || !cameraActive) return
     const interval = setInterval(() => {
@@ -65,21 +66,11 @@ export function QRScanner() {
           canvas.height = videoRef.current.videoHeight
           ctx.drawImage(videoRef.current, 0, 0)
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-          const pixelCount = imageData.data.length / 4
-          const brightness = Array.from({ length: pixelCount }, (_, i) => {
-            const offset = i * 4
-            return (imageData.data[offset] + imageData.data[offset + 1] + imageData.data[offset + 2]) / 3
-          })
-          const avgBrightness = brightness.reduce((a, b) => a + b, 0) / pixelCount
-          // Simulated detection based on brightness variance (presence of QR-like contrast)
-          if (avgBrightness > 50 && avgBrightness < 200) {
-            const detected = Math.random() > 0.95
-            if (detected) {
-              const simulatedContent = `https://qrcode-simulated-${Date.now() % 100000}.com`
-              setResult(simulatedContent)
-              setScanning(false)
-              stopCamera()
-            }
+          const code = jsQR(imageData.data, imageData.width, imageData.height)
+          if (code) {
+            setResult(code.data)
+            setScanning(false)
+            stopCamera()
           }
         }
       }
@@ -102,11 +93,24 @@ export function QRScanner() {
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string
       setImageFile(dataUrl)
-      // Simulated scan from image
-      setTimeout(() => {
-        const simulatedContent = `https://image-qr-simulated-${Date.now() % 100000}.com`
-        setResult(simulatedContent)
-      }, 500)
+      const img = document.createElement("img")
+      img.onload = () => {
+        const canvas = document.createElement("canvas")
+        canvas.width = img.width
+        canvas.height = img.height
+        const ctx = canvas.getContext("2d")
+        if (ctx) {
+          ctx.drawImage(img, 0, 0)
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const code = jsQR(imageData.data, imageData.width, imageData.height)
+          if (code) {
+            setResult(code.data)
+          } else {
+            setError("No QR code found in the image.")
+          }
+        }
+      }
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }

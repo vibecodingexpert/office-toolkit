@@ -12,12 +12,9 @@ import {
   File,
   FileText,
   FileImage,
-  FileMusic,
-  FileVideoCamera,
   AlertCircle,
   CircleCheck,
   ArrowRight,
-  Upload,
 } from "lucide-react"
 
 interface FormatCategory {
@@ -48,26 +45,6 @@ const formatCategories: FormatCategory[] = [
       { ext: "webp", name: "WebP", mime: "image/webp" },
       { ext: "gif", name: "GIF", mime: "image/gif" },
       { ext: "bmp", name: "BMP", mime: "image/bmp" },
-      { ext: "svg", name: "SVG", mime: "image/svg+xml" },
-    ],
-  },
-  {
-    name: "Audio",
-    icon: <FileMusic className="h-4 w-4" />,
-    formats: [
-      { ext: "mp3", name: "MP3", mime: "audio/mpeg" },
-      { ext: "wav", name: "WAV", mime: "audio/wav" },
-      { ext: "ogg", name: "OGG", mime: "audio/ogg" },
-      { ext: "flac", name: "FLAC", mime: "audio/flac" },
-    ],
-  },
-  {
-    name: "Video",
-    icon: <FileVideoCamera className="h-4 w-4" />,
-    formats: [
-      { ext: "mp4", name: "MP4", mime: "video/mp4" },
-      { ext: "webm", name: "WebM", mime: "video/webm" },
-      { ext: "avi", name: "AVI", mime: "video/x-msvideo" },
     ],
   },
 ]
@@ -85,6 +62,230 @@ function detectFormat(filename: string): { ext: string; category: FormatCategory
 function getCategoryIcon(cat: FormatCategory | null) {
   if (!cat) return <File className="h-4 w-4" />
   return cat.icon
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+function escapeXml(str: string): string {
+  return escapeHtml(str)
+}
+
+function parseCSV(text: string): string[][] {
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  return lines.map(line => {
+    const result: string[] = []
+    let current = ""
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (inQuotes) {
+        if (ch === '"') {
+          if (i + 1 < line.length && line[i + 1] === '"') {
+            current += '"'
+            i++
+          } else {
+            inQuotes = false
+          }
+        } else {
+          current += ch
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true
+        } else if (ch === ",") {
+          result.push(current)
+          current = ""
+        } else {
+          current += ch
+        }
+      }
+    }
+    result.push(current)
+    return result
+  })
+}
+
+function formatCSV(rows: string[][]): string {
+  return rows.map(row =>
+    row.map(cell => {
+      if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+        return `"${cell.replace(/"/g, '""')}"`
+      }
+      return cell
+    }).join(",")
+  ).join("\n")
+}
+
+function convertDocumentText(text: string, from: string, to: string): string {
+  const lines = text.split(/\r?\n/)
+  switch (`${from}->${to}`) {
+    case "txt->csv":
+      return lines.map(l => `"${l.replace(/"/g, '""')}"`).join("\n")
+    case "txt->json":
+      return JSON.stringify(lines, null, 2)
+    case "txt->xml":
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n${lines.map(l => `  <line>${escapeXml(l)}</line>`).join("\n")}\n</root>`
+    case "txt->html":
+      return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Converted Text</title></head><body>\n${lines.map(l => `  <p>${escapeHtml(l)}</p>`).join("\n")}\n</body></html>`
+    case "txt->md":
+      return text
+    case "csv->txt": {
+      const rows = parseCSV(text)
+      return rows.map(r => r.join("\t")).join("\n")
+    }
+    case "csv->json": {
+      const rows = parseCSV(text)
+      if (rows.length < 2) return JSON.stringify(rows.map(r => ({ value: r[0] || "" })), null, 2)
+      const headers = rows[0]
+      const data = rows.slice(1).map(r => {
+        const obj: Record<string, string> = {}
+        headers.forEach((h, i) => { obj[h] = r[i] || "" })
+        return obj
+      })
+      return JSON.stringify(data, null, 2)
+    }
+    case "csv->xml": {
+      const rows = parseCSV(text)
+      if (rows.length < 2) return `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n${rows.map((r, i) => `  <row id="${i}"><cell>${escapeXml(r[0] || "")}</cell></row>`).join("\n")}\n</root>`
+      const headers = rows[0]
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<data>\n${rows.slice(1).map(r =>
+        `  <row>\n${headers.map((h, i) => `    <${h}>${escapeXml(r[i] || "")}</${h}>`).join("\n")}\n  </row>`
+      ).join("\n")}\n</data>`
+    }
+    case "csv->html": {
+      const rows = parseCSV(text)
+      if (rows.length === 0) return "<html><body><p>No data</p></body></html>"
+      const header = rows[0]
+      const data = rows.slice(1)
+      let html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>CSV Data</title><style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f5f5f5}</style></head><body><table>\n  <thead><tr>${header.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>\n  <tbody>`
+      html += data.map(r => `\n    <tr>${header.map((_, i) => `<td>${escapeHtml(r[i] || "")}</td>`).join("")}</tr>`).join("")
+      html += "\n  </tbody>\n</table></body></html>"
+      return html
+    }
+    case "csv->md": {
+      const rows = parseCSV(text)
+      if (rows.length === 0) return ""
+      const header = rows[0]
+      const data = rows.slice(1)
+      const sep = `| ${header.map(() => "---").join(" | ")} |`
+      const hdr = `| ${header.join(" | ")} |`
+      const body = data.map(r => `| ${header.map((_, i) => r[i] || "").join(" | ")} |`).join("\n")
+      return `${hdr}\n${sep}\n${body}`
+    }
+    case "json->txt": {
+      try { return JSON.stringify(JSON.parse(text), null, 2) } catch { return text }
+    }
+    case "json->csv": {
+      try {
+        const data = JSON.parse(text)
+        if (!Array.isArray(data) || data.length === 0) return text
+        if (typeof data[0] === "object" && data[0] !== null) {
+          const headers = Object.keys(data[0])
+          const rows = data.map((item: Record<string, unknown>) => headers.map(h => String(item[h] ?? "")))
+          return formatCSV([headers, ...rows])
+        }
+        return formatCSV(data.map((item: unknown) => [String(item)]))
+      } catch { return text }
+    }
+    case "json->xml": {
+      try {
+        const data = JSON.parse(text)
+        return `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <json>\n    <![CDATA[\n${JSON.stringify(data, null, 4)}\n    ]]>\n  </json>\n</root>`
+      } catch { return text }
+    }
+    case "json->html": {
+      try {
+        const data = JSON.parse(text)
+        return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>JSON Data</title></head><body><pre style="font-family:monospace;white-space:pre-wrap;word-break:break-word;">${escapeHtml(JSON.stringify(data, null, 2))}</pre></body></html>`
+      } catch { return text }
+    }
+    case "json->md": {
+      try {
+        const data = JSON.parse(text)
+        return "```json\n" + JSON.stringify(data, null, 2) + "\n```"
+      } catch { return text }
+    }
+    case "xml->txt":
+      return text.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim()
+    case "xml->json": {
+      const obj = { raw: text }
+      return JSON.stringify(obj, null, 2)
+    }
+    case "xml->csv":
+      return text.replace(/<[^>]*>/g, ",").replace(/,+/g, ",").replace(/^,|,$/g, "").split("\n").map(l => l.trim()).filter(Boolean).join("\n")
+    case "xml->html":
+      return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>XML Data</title></head><body><pre style="font-family:monospace;white-space:pre-wrap;">${escapeHtml(text)}</pre></body></html>`
+    case "xml->md":
+      return "```xml\n" + text + "\n```"
+    case "html->txt":
+      return text.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/\s+/g, " ").trim()
+    case "html->json": {
+      const obj = { html: text }
+      return JSON.stringify(obj, null, 2)
+    }
+    case "html->csv": {
+      const stripped = text.replace(/<[^>]*>/g, "").trim()
+      return stripped.split("\n").map(l => `"${l.trim().replace(/"/g, '""')}"`).filter(l => l !== '""').join("\n")
+    }
+    case "html->xml":
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <![CDATA[\n${text}\n  ]]>\n</root>`
+    case "html->md": {
+      const stripped = text.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim()
+      return stripped
+    }
+    case "md->txt":
+      return text.replace(/[#*_~`>\[\]()!|-]/g, "").replace(/\n{3,}/g, "\n\n").trim()
+    case "md->csv":
+      return text.split("\n").map(l => `"${l.replace(/"/g, '""')}"`).join("\n")
+    case "md->json": {
+      const obj = { markdown: text }
+      return JSON.stringify(obj, null, 2)
+    }
+    case "md->xml":
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <content>\n    <![CDATA[\n${text}\n    ]]>\n  </content>\n</root>`
+    case "md->html": {
+      const lines2 = text.split("\n")
+      let html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Markdown</title></head><body>\n`
+      for (const line of lines2) {
+        if (line.startsWith("# ")) html += `  <h1>${escapeHtml(line.slice(2))}</h1>\n`
+        else if (line.startsWith("## ")) html += `  <h2>${escapeHtml(line.slice(3))}</h2>\n`
+        else if (line.startsWith("### ")) html += `  <h3>${escapeHtml(line.slice(4))}</h3>\n`
+        else if (line.startsWith("- ") || line.startsWith("* ")) html += `  <li>${escapeHtml(line.slice(2))}</li>\n`
+        else if (line.trim()) html += `  <p>${escapeHtml(line)}</p>\n`
+      }
+      html += "</body></html>"
+      return html
+    }
+    default:
+      return text
+  }
+}
+
+async function convertImage(file: File, targetMime: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement("canvas")
+        canvas.width = img.width
+        canvas.height = img.height
+        const ctx = canvas.getContext("2d")
+        if (!ctx) { reject(new Error("Could not get canvas context")); return }
+        ctx.drawImage(img, 0, 0)
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob)
+          else reject(new Error(`Unsupported image format: ${targetMime}`))
+        }, targetMime)
+      }
+      img.onerror = () => reject(new Error("Failed to load image for conversion"))
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error("Failed to read file"))
+    reader.readAsDataURL(file)
+  })
 }
 
 export function FileConverter() {
@@ -129,18 +330,23 @@ export function FileConverter() {
     setError(null)
 
     try {
-      const buffer = await file.arrayBuffer()
       setProgress(30)
-
-      // Simulated conversion (real conversion would use libraries)
-      await new Promise((r) => setTimeout(r, 1000))
-      setProgress(60)
 
       const targetMime = formatCategories
         .flatMap((c) => c.formats)
         .find((f) => f.ext === targetFormat)?.mime || "application/octet-stream"
 
-      const blob = new Blob([buffer], { type: targetMime })
+      let blob: Blob | null = null
+
+      if (sourceCategory?.name === "Images") {
+        blob = await convertImage(file, targetMime)
+      } else if (sourceCategory?.name === "Documents") {
+        const text = await file.text()
+        const result = convertDocumentText(text, sourceExt, targetFormat)
+        blob = new Blob([result], { type: targetMime })
+      }
+
+      if (!blob) throw new Error("Conversion failed: unsupported format combination")
       setProgress(100)
       setConvertedBlob(blob)
     } catch (err) {

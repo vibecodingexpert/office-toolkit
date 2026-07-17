@@ -63,7 +63,7 @@ export function OcrPdf() {
       file: f,
       type,
       status: "idle",
-      pages: type === "pdf" ? Math.max(1, Math.floor(f.size / 60000)) : 1,
+      pages: type === "pdf" ? 0 : 1,
     })
     setProgress(0)
     setIsProcessing(false)
@@ -85,7 +85,17 @@ export function OcrPdf() {
     setResults([])
 
     try {
-      const pageCount = fileInfo.pages
+      let pageCount = fileInfo.pages
+      let pdfDoc: any = null
+
+      if (fileInfo.type === "pdf") {
+        const pdfjsLib = await import("pdfjs-dist")
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+        const data = await fileInfo.file.arrayBuffer()
+        pdfDoc = await pdfjsLib.getDocument({ data }).promise
+        pageCount = pdfDoc.numPages
+      }
+
       const ocrResults: OcrResult[] = []
 
       for (let page = 0; page < pageCount; page++) {
@@ -93,30 +103,14 @@ export function OcrPdf() {
         setProgress(Math.round(((page) / pageCount) * 90))
 
         let imageData: Blob | string
-        if (fileInfo.type === "pdf") {
+        if (fileInfo.type === "pdf" && pdfDoc) {
+          const pageObj = await pdfDoc.getPage(page + 1)
+          const viewport = pageObj.getViewport({ scale: 1.5 })
           const canvas = document.createElement("canvas")
-          canvas.width = 816
-          canvas.height = 1056
+          canvas.width = viewport.width
+          canvas.height = viewport.height
           const ctx = canvas.getContext("2d")
-          if (ctx) {
-            ctx.fillStyle = "#ffffff"
-            ctx.fillRect(0, 0, 816, 1056)
-            const gradient = ctx.createLinearGradient(0, 0, 816, 1056)
-            gradient.addColorStop(0, "#f8fafc")
-            gradient.addColorStop(1, "#f1f5f9")
-            ctx.fillStyle = gradient
-            ctx.fillRect(0, 0, 816, 1056)
-            ctx.fillStyle = "#0d9488"
-            ctx.fillRect(0, 0, 816, 4)
-            ctx.fillStyle = "#334155"
-            ctx.font = "14px sans-serif"
-            ctx.textAlign = "left"
-            for (let line = 0; line < 30; line++) {
-              const y = 60 + line * 28
-              ctx.fillStyle = `rgba(100, 116, 139, ${0.15 + Math.random() * 0.15})`
-              ctx.fillRect(50, y, 300 + Math.random() * 400, 3)
-            }
-          }
+          await pageObj.render({ canvasContext: ctx!, viewport }).promise
           imageData = await new Promise<Blob>((resolve) => {
             canvas.toBlob((b) => resolve(b!), "image/png", 1)
           })
@@ -143,7 +137,7 @@ export function OcrPdf() {
       setProgress(100)
       setProgressLabel("OCR complete")
       setResults(ocrResults)
-      setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
+      setFileInfo((prev) => prev ? { ...prev, status: "done", pages: pageCount } : prev)
       const totalConfidence = ocrResults.reduce((s, r) => s + r.confidence, 0) / ocrResults.length
       toast.success(`OCR completed! Avg confidence: ${Math.round(totalConfidence)}%`)
     } catch {
@@ -218,7 +212,7 @@ export function OcrPdf() {
               <div className="mt-1 text-xs text-muted-foreground">
                 <span>Size: {formatSize(fileInfo.file.size)}</span>
                 <span className="ml-3">Type: {fileInfo.type.toUpperCase()}</span>
-                {fileInfo.type === "pdf" && <span className="ml-3">Pages (est.): {fileInfo.pages}</span>}
+                {fileInfo.type === "pdf" && fileInfo.pages > 0 && <span className="ml-3">Pages: {fileInfo.pages}</span>}
               </div>
             </div>
             {fileInfo.status === "idle" && (

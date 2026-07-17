@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn"
 import { Button } from "@/components/ui/button"
 import { FileUpload } from "@/components/ui/file-upload"
 import { ProgressBar } from "@/components/ui/progress-bar"
+import JSZip from "jszip"
 import {
   FileArchive,
   Download,
@@ -51,6 +52,7 @@ export function ZipExtractor() {
   const [extractedBlobs, setExtractedBlobs] = React.useState<Map<string, Blob>>(new Map())
   const [search, setSearch] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
+  const zipRef = React.useRef<JSZip | null>(null)
 
   const handleUpload = (files: File[]) => {
     const f = files[0]
@@ -59,19 +61,31 @@ export function ZipExtractor() {
     setError(null)
     setSelected(new Set())
 
-    // Simulate reading zip contents
-    const simulated: ZipEntry[] = [
-      { name: "documents/", size: 0, compressedSize: 0, isDirectory: true },
-      { name: "documents/report.pdf", size: 245760, compressedSize: 182345, isDirectory: false },
-      { name: "documents/notes.txt", size: 4096, compressedSize: 2048, isDirectory: false },
-      { name: "images/", size: 0, compressedSize: 0, isDirectory: true },
-      { name: "images/photo.jpg", size: 524288, compressedSize: 491520, isDirectory: false },
-      { name: "images/logo.png", size: 16384, compressedSize: 12288, isDirectory: false },
-      { name: "data.csv", size: 8192, compressedSize: 4096, isDirectory: false },
-      { name: "config.json", size: 2048, compressedSize: 1024, isDirectory: false },
-    ]
-    setEntries(simulated)
-    setSelected(new Set(simulated.filter((e) => !e.isDirectory).map((e) => e.name)))
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const buffer = e.target?.result as ArrayBuffer
+        const zip = await JSZip.loadAsync(buffer)
+        zipRef.current = zip
+
+        const allEntries: ZipEntry[] = []
+        zip.forEach((relativePath, zipEntry) => {
+          const raw = (zipEntry as any)._data
+          allEntries.push({
+            name: relativePath,
+            size: raw?.uncompressedSize ?? 0,
+            compressedSize: raw?.compressedSize ?? 0,
+            isDirectory: zipEntry.dir,
+          })
+        })
+
+        setEntries(allEntries)
+        setSelected(new Set(allEntries.filter((e) => !e.isDirectory).map((e) => e.name)))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to read ZIP file")
+      }
+    }
+    reader.readAsArrayBuffer(f)
   }
 
   const toggleEntry = (name: string) => {
@@ -96,9 +110,11 @@ export function ZipExtractor() {
       let done = 0
 
       for (const entry of selectedEntries) {
-        await new Promise((r) => setTimeout(r, 200))
-        const blob = new Blob([`Simulated content for ${entry.name}`], { type: "application/octet-stream" })
-        blobs.set(entry.name, blob)
+        const zipObj = zipRef.current?.file(entry.name)
+        if (zipObj && !zipObj.dir) {
+          const blob = await zipObj.async("blob")
+          blobs.set(entry.name, blob)
+        }
         done++
         setProgress(Math.round((done / total) * 100))
       }
@@ -122,14 +138,17 @@ export function ZipExtractor() {
     URL.revokeObjectURL(a.href)
   }
 
-  const handleDownloadAll = () => {
+  const handleDownloadAll = async () => {
+    const newZip = new JSZip()
     extractedBlobs.forEach((blob, name) => {
-      const a = document.createElement("a")
-      a.href = URL.createObjectURL(blob)
-      a.download = name.split("/").pop() || name
-      a.click()
-      URL.revokeObjectURL(a.href)
+      newZip.file(name, blob)
     })
+    const content = await newZip.generateAsync({ type: "blob" })
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(content)
+    a.download = "extracted-files.zip"
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   const handleReset = () => {

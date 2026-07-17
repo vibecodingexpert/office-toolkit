@@ -46,7 +46,6 @@ const categoryIcons: Record<ToolCategory, React.ReactNode> = {
 const bottomLinks = [
   { label: "Settings", icon: Settings, href: "/settings" },
   { label: "Help", icon: HelpCircle, href: "/help" },
-  { label: "Logout", icon: LogOut, href: "/logout" },
 ]
 
 export function Sidebar() {

@@ -116,49 +116,24 @@ export function PdfToJpg() {
       const genImages: GeneratedImage[] = []
       const zip = new JSZip()
 
+      const pdfjsLib = await import("pdfjs-dist")
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise
+
       for (let i = 0; i < pageList.length; i++) {
         setProgress(Math.round(((i) / pageList.length) * 95))
         const pageNum = pageList[i]
+        const page = await pdf.getPage(pageNum)
 
+        const viewport = page.getViewport({ scale: 1.5 })
         const canvas = document.createElement("canvas")
-        canvas.width = 816
-        canvas.height = 1056
+        canvas.width = viewport.width
+        canvas.height = viewport.height
         const ctx = canvas.getContext("2d")
-        if (ctx) {
-          ctx.fillStyle = "#ffffff"
-          ctx.fillRect(0, 0, 816, 1056)
-          const gradient = ctx.createLinearGradient(0, 0, 816, 1056)
-          gradient.addColorStop(0, "#f0fdfa")
-          gradient.addColorStop(1, "#e6f7f4")
-          ctx.fillStyle = gradient
-          ctx.fillRect(0, 0, 816, 1056)
-          ctx.fillStyle = "#0d9488"
-          ctx.fillRect(0, 0, 816, 6)
-          ctx.strokeStyle = "#d9f0ec"
-          ctx.lineWidth = 1
-          for (let x = 40; x < 776; x += 40) {
-            ctx.beginPath()
-            ctx.moveTo(x, 60)
-            ctx.lineTo(x, 1000)
-            ctx.stroke()
-          }
-          for (let y = 60; y < 1000; y += 30) {
-            ctx.beginPath()
-            ctx.moveTo(40, y)
-            ctx.lineTo(776, y)
-            ctx.stroke()
-          }
-          ctx.fillStyle = "#1e293b"
-          ctx.font = "bold 36px sans-serif"
-          ctx.textAlign = "center"
-          ctx.fillText(`Page ${pageNum}`, 408, 120)
-          ctx.fillStyle = "#64748b"
-          ctx.font = "16px sans-serif"
-          ctx.fillText(fileInfo.file.name, 408, 155)
-          ctx.font = "13px sans-serif"
-          ctx.fillStyle = "#94a3b8"
-          ctx.fillText(`${pageNum} of ${fileInfo.pages} · ${quality}% quality · ${formatSize(fileInfo.file.size)}`, 408, 180)
-        }
+        const renderTask = page.render({ canvas: canvas, canvasContext: ctx!, viewport })
+        await renderTask.promise
 
         const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", quality / 100))
         if (blob) {

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import JSZip from "jszip"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils/cn"
 import { Button } from "@/components/ui/button"
@@ -63,21 +64,19 @@ export function ZipCreator() {
     setError(null)
 
     try {
-      // Simulate ZIP creation
+      const zip = new JSZip()
       const total = files.length
-      let done = 0
-      const chunks: Blob[] = []
-
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
         const buffer = await file.arrayBuffer()
-        // Simulated compression
-        chunks.push(new Blob([buffer], { type: "application/octet-stream" }))
-        done++
-        setProgress(Math.round((done / total) * 100))
-        await new Promise((r) => setTimeout(r, 200))
+        zip.file(file.name, buffer)
+        setProgress(Math.round(((i + 1) / total) * 100))
       }
-
-      const blob = new Blob(chunks, { type: "application/zip" })
+      const blob = await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel }
+      })
       setProgress(100)
       setZipBlob(blob)
     } catch (err) {
