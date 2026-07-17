@@ -13,7 +13,9 @@ import {
   Sparkles,
   Image,
   Sliders,
+  Server,
 } from "lucide-react"
+import { isPythonBackendAvailable, getPythonBackendUrl } from "@/lib/python-backend"
 
 type EnhancementType = "auto" | "sharpen" | "denoise" | "colorize"
 
@@ -115,6 +117,7 @@ export function AiEnhance() {
   const [resultUrl, setResultUrl] = React.useState<string | null>(null)
   const [enhancement, setEnhancement] = React.useState<EnhancementType>("auto")
   const [loading, setLoading] = React.useState(false)
+  const usePython = isPythonBackendAvailable()
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -129,7 +132,22 @@ export function AiEnhance() {
   const handleEnhance = React.useCallback(async () => {
     if (!preview) return
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 300))
+    if (usePython && file) {
+      try {
+        const fd = new FormData(); fd.append("file", file)
+        fd.append("sharpness", enhancement === "sharpen" ? "2.0" : "1.0")
+        fd.append("denoise", enhancement === "denoise" ? "true" : "false")
+        fd.append("contrast", enhancement === "auto" ? "1.3" : "1.0")
+        fd.append("brightness", "1.0"); fd.append("saturation", enhancement === "colorize" ? "1.5" : "1.0")
+        const res = await fetch(`${getPythonBackendUrl()}/api/image-enhance/enhance`, { method: "POST", body: fd })
+        if (!res.ok) throw new Error("Python enhance failed")
+        const blob = await res.blob(); const url = URL.createObjectURL(blob)
+        if (resultUrl) URL.revokeObjectURL(resultUrl)
+        setResultUrl(url); setLoading(false)
+        toast.success(`Image enhanced (Python)`)
+        return
+      } catch (e) { console.warn("Python enhance fallback to JS:", e) }
+    }
     try {
       const img = new window.Image(1, 1)
       img.src = preview
@@ -157,7 +175,7 @@ export function AiEnhance() {
       toast.error("Failed to enhance image")
       setLoading(false)
     }
-  }, [preview, enhancement, resultUrl])
+  }, [preview, enhancement, resultUrl, file, usePython])
 
   const handleDownload = React.useCallback(() => {
     if (!resultUrl) return
@@ -181,7 +199,7 @@ export function AiEnhance() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">AI Enhance</h2>
-          <p className="text-sm text-muted-foreground">Enhance image quality with canvas-based filters</p>
+          <p className="text-sm text-muted-foreground">Enhance image quality {usePython ? "with OpenCV" : "with canvas-based filters"}{usePython && <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600"><Server className="h-3 w-3" />Python</span>}</p>
         </div>
       </div>
 

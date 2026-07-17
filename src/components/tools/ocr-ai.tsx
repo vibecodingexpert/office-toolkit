@@ -17,7 +17,9 @@ import {
   Download,
   Trash2,
   FileText,
+  Server,
 } from "lucide-react"
+import { isPythonBackendAvailable, getPythonBackendUrl } from "@/lib/python-backend"
 
 const LANGUAGES = [
   { code: "eng", label: "English" },
@@ -108,6 +110,9 @@ export function OcrAI() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [])
 
+  const fileInputRefForOcr = React.useRef<HTMLInputElement>(null)
+  const usePython = isPythonBackendAvailable()
+
   const handleRunOcr = React.useCallback(async () => {
     if (!image) {
       toast.error("Please upload an image first")
@@ -119,6 +124,24 @@ export function OcrAI() {
     setProgressLabel("Loading OCR engine...")
 
     try {
+      if (usePython) {
+        setProgressLabel("Calling Python OCR engine...")
+        const fileInput = fileInputRef.current
+        const file = fileInput?.files?.[0]
+        if (!file) { toast.error("File not available"); setLoading(false); return }
+        const fd = new FormData(); fd.append("file", file); fd.append("lang", language)
+        const res = await fetch(`${getPythonBackendUrl()}/api/ocr/extract`, { method: "POST", body: fd })
+        if (!res.ok) throw new Error("Python OCR failed, falling back...")
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        setResult(data.text)
+        setProgress(100)
+        setProgressLabel("Complete")
+        toast.success("Text extracted (Python)")
+        setLoading(false)
+        return
+      }
+
       const Tesseract = await import("tesseract.js")
 
       const result = await Tesseract.recognize(image, language, {
@@ -148,7 +171,7 @@ export function OcrAI() {
     } finally {
       setLoading(false)
     }
-  }, [image, language])
+  }, [image, language, usePython])
 
   const handleCopy = React.useCallback(async () => {
     try {
@@ -177,7 +200,7 @@ export function OcrAI() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">OCR AI</h1>
-          <p className="text-sm text-muted-foreground">Extract text from images using tesseract.js</p>
+          <p className="text-sm text-muted-foreground">Extract text from images {usePython ? "using Python Tesseract" : "using tesseract.js"}{usePython && <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600"><Server className="h-3 w-3" />Python</span>}</p>
         </div>
       </motion.div>
 

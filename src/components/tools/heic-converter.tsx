@@ -13,7 +13,9 @@ import {
   FileImage,
   Image,
   AlertCircle,
+  Server,
 } from "lucide-react"
+import { isPythonBackendAvailable, getPythonBackendUrl } from "@/lib/python-backend"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -35,6 +37,7 @@ export function HeicConverter() {
   const [quality, setQuality] = React.useState(90)
   const [imgDims, setImgDims] = React.useState({ w: 0, h: 0 })
   const [loading, setLoading] = React.useState(false)
+  const usePython = isPythonBackendAvailable()
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -52,7 +55,19 @@ export function HeicConverter() {
   const handleConvert = React.useCallback(async () => {
     if (!preview) return
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 200))
+    if (usePython && file) {
+      try {
+        const ext = FORMATS.find((f) => f.value === targetFormat)?.ext || "png"
+        const fd = new FormData(); fd.append("file", file); fd.append("format", ext)
+        const res = await fetch(`${getPythonBackendUrl()}/api/heic-converter/convert`, { method: "POST", body: fd })
+        if (!res.ok) throw new Error("Python HEIC conversion failed")
+        const blob = await res.blob(); const url = URL.createObjectURL(blob)
+        if (resultUrl) URL.revokeObjectURL(resultUrl)
+        setResultUrl(url); setLoading(false)
+        toast.success(`Converted to ${FORMATS.find((f) => f.value === targetFormat)?.label} (Python)`)
+        return
+      } catch (e) { console.warn("Python HEIC fallback to JS:", e) }
+    }
     try {
       const img = new window.Image(1, 1)
       img.src = preview
@@ -104,7 +119,7 @@ export function HeicConverter() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">HEIC Converter</h2>
-          <p className="text-sm text-muted-foreground">Convert HEIC images to standard formats</p>
+          <p className="text-sm text-muted-foreground">Convert HEIC images to standard formats{usePython && <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600"><Server className="h-3 w-3" />Python</span>}</p>
         </div>
       </div>
 
