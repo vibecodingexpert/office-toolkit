@@ -222,9 +222,12 @@ export function BackgroundRemover() {
   const rightContainerRef = React.useRef<HTMLDivElement>(null)
   const brushCursorRef = React.useRef<HTMLDivElement>(null)
 
-  const originalSrcRef = React.useRef<string | null>(null)
-  const fgCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const [originalSrc, setOriginalSrc] = React.useState<string | null>(null)
+  const [fgCanvasData, setFgCanvasData] = React.useState<{ canvas: HTMLCanvasElement; origW: number; origH: number } | null>(null)
+  const [renderTick, setRenderTick] = React.useState(0)
   const resultBlobRef = React.useRef<string | null>(null)
+  const fgCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const originalSrcRef = React.useRef<string | null>(null)
 
   const active = images[activeIdx]
 
@@ -235,10 +238,12 @@ export function BackgroundRemover() {
 
   const getFgCtx = React.useCallback(() => fgCanvasRef.current?.getContext("2d") || null, [])
 
-  const renderRightPanel = React.useCallback(() => {
+  const tick = React.useCallback(() => setRenderTick(t => t + 1), [])
+
+  React.useEffect(() => {
     const canvas = rightCanvasRef.current
     const fgCanvas = fgCanvasRef.current
-    if (!canvas || !fgCanvas || !originalSrcRef.current) return
+    if (!canvas || !fgCanvas || !originalSrc) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     const w = fgCanvas.width, h = fgCanvas.height
@@ -247,12 +252,12 @@ export function BackgroundRemover() {
     if (showRightOriginal) {
       const img = document.createElement("img")
       img.onload = () => ctx.drawImage(img, 0, 0, w, h)
-      img.src = originalSrcRef.current
+      img.src = originalSrc
       return
     }
 
     if (maskView === "normal") {
-      const fg = ctx.getImageData(0, 0, w, h)
+      const fg = fgCanvas.getContext("2d")!.getImageData(0, 0, w, h)
       const composited = compositeOverBg(fg, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
       ctx.putImageData(composited, 0, 0)
     } else if (maskView === "mask") {
@@ -275,15 +280,13 @@ export function BackgroundRemover() {
         }
         ctx.putImageData(over, 0, 0)
       }
-      img.src = originalSrcRef.current
+      img.src = originalSrc
     }
-  }, [maskView, bgOption, bgColor, bgColor2, gradientType, customBg, patternType, showRightOriginal])
+  }, [renderTick, maskView, bgOption, bgColor, bgColor2, gradientType, customBg, patternType, showRightOriginal, originalSrc, fgCanvasData])
 
-  React.useEffect(() => { renderRightPanel() }, [renderRightPanel])
-
-  const renderLeftPanel = React.useCallback(() => {
+  React.useEffect(() => {
     const canvas = leftCanvasRef.current
-    if (!canvas || !originalSrcRef.current) return
+    if (!canvas || !originalSrc) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     const img = document.createElement("img")
@@ -291,10 +294,8 @@ export function BackgroundRemover() {
       canvas.width = img.width; canvas.height = img.height
       ctx.drawImage(img, 0, 0)
     }
-    img.src = originalSrcRef.current
-  }, [])
-
-  React.useEffect(() => { renderLeftPanel() }, [renderLeftPanel])
+    img.src = originalSrc
+  }, [originalSrc, renderTick])
 
   const pushHistory = React.useCallback((name: string) => {
     const ctx = getFgCtx()
@@ -358,20 +359,20 @@ export function BackgroundRemover() {
         ctx.drawImage(blobImg, 0, 0)
         fgCanvasRef.current = c
 
+        const origUrl = URL.createObjectURL(file)
+        originalSrcRef.current = origUrl
+        setOriginalSrc(origUrl)
+        setFgCanvasData({ canvas: c, origW: blobImg.width, origH: blobImg.height })
+
         setImages(prev => prev.map((item, i) => i === idx ? { ...item, width: blobImg.width, height: blobImg.height, processing: false, progress: 100 } : item))
         setProcessing(false)
-
-        originalSrcRef.current = URL.createObjectURL(file)
         setHistory([])
         setHistIdx(-1)
-        renderLeftPanel()
-        renderRightPanel()
 
         const data = ctx.getImageData(0, 0, c.width, c.height)
         setHistory([{ id: crypto.randomUUID(), name: "Initial", data: cloneImageData(data), w: c.width, h: c.height }])
         setHistIdx(0)
-
-        fitZoom("left"); fitZoom("right")
+        tick()
         toast.success("Background removed")
       }
       blobImg.src = url
@@ -382,22 +383,22 @@ export function BackgroundRemover() {
       setProcessing(false)
       toast.error("AI processing failed")
     }
-  }, [renderLeftPanel, renderRightPanel])
+  }, [tick])
 
   const fitZoom = React.useCallback((side: "left" | "right") => {
     const container = side === "left" ? leftContainerRef.current : rightContainerRef.current
-    const fgCanvas = fgCanvasRef.current
-    if (!container || !fgCanvas) return
+    const fg = fgCanvasRef.current
+    if (!container || !fg) return
     const cw = container.clientWidth - 32, ch = container.clientHeight - 32
-    if (fgCanvas.width === 0 || fgCanvas.height === 0) return
-    const z = Math.min(cw / fgCanvas.width, ch / fgCanvas.height, 2)
+    if (fg.width === 0 || fg.height === 0) return
+    const z = Math.min(cw / fg.width, ch / fg.height, 2)
     if (side === "left") { setLeftZoom(z); setLeftPanX(0); setLeftPanY(0) }
     else { setRightZoom(z); setRightPanX(0); setRightPanY(0) }
   }, [])
 
   React.useEffect(() => {
     if (fgCanvasRef.current) { fitZoom("left"); fitZoom("right") }
-  }, [fgCanvasRef.current?.width, fgCanvasRef.current?.height])
+  }, [fgCanvasData])
 
   const cancelProcessing = React.useCallback(() => {
     cancelledRef.current = true; setProcessing(false)
@@ -409,7 +410,7 @@ export function BackgroundRemover() {
     setImages(prev => {
       const idx = prev.findIndex(i => i.id === id)
       const next = prev.filter(i => i.id !== id)
-      if (next.length === 0) { setActiveIdx(0); fgCanvasRef.current = null; originalSrcRef.current = null; setHistory([]); setHistIdx(-1) }
+      if (next.length === 0) { setActiveIdx(0); fgCanvasRef.current = null; originalSrcRef.current = null; setOriginalSrc(null); setFgCanvasData(null); setHistory([]); setHistIdx(-1) }
       else if (idx <= activeIdx && activeIdx > 0) setActiveIdx(a => a - 1)
       else if (activeIdx >= next.length) setActiveIdx(next.length - 1)
       return next
@@ -444,7 +445,7 @@ export function BackgroundRemover() {
 
   const reprocess = React.useCallback(async () => {
     if (!active?.file) return
-    fgCanvasRef.current = null; originalSrcRef.current = null; setHistory([]); setHistIdx(-1)
+    fgCanvasRef.current = null; originalSrcRef.current = null; setOriginalSrc(null); setFgCanvasData(null); setHistory([]); setHistIdx(-1)
     pushHistory("Initial")
     await processWithAI(active.file, activeIdx)
   }, [active, activeIdx, processWithAI, pushHistory])
@@ -457,8 +458,8 @@ export function BackgroundRemover() {
     const data = ctx.getImageData(0, 0, w, h)
     brushDab(data.data, w, h, cx, cy, brushCfg.size / 2, brushCfg.hardness / 100, brushCfg.opacity, brushCfg.flow, activeTool === "brush")
     ctx.putImageData(data, 0, 0)
-    renderRightPanel()
-  }, [getFgCtx, brushCfg, activeTool, renderRightPanel])
+    tick()
+  }, [getFgCtx, brushCfg, activeTool, tick])
 
   const drawBrushLine = React.useCallback((x1: number, y1: number, x2: number, y2: number) => {
     const spacing = Math.max(1, brushCfg.spacing)
@@ -545,8 +546,8 @@ export function BackgroundRemover() {
     const blurred = gaussBlurAlpha(alpha, w, h, featherRadius)
     for (let i = 0; i < w * h; i++) data.data[i * 4 + 3] = Math.round(blurred[i])
     ctx.putImageData(data, 0, 0)
-    pushHistory("Feather"); renderRightPanel()
-  }, [getFgCtx, featherRadius, pushHistory, renderRightPanel])
+    pushHistory("Feather"); tick()
+  }, [getFgCtx, featherRadius, pushHistory, tick])
 
   const applyDilate = React.useCallback(() => {
     const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
@@ -558,8 +559,8 @@ export function BackgroundRemover() {
       let m = 0; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const px = x + dx, py = y + dy; if (px >= 0 && px < w && py >= 0 && py < h) m = Math.max(m, data.data[(py * w + px) * 4 + 3]) }
       out.data[(y * w + x) * 4 + 3] = m
     }
-    ctx.putImageData(out, 0, 0); pushHistory("Expand edge"); renderRightPanel()
-  }, [getFgCtx, edgeRefine, pushHistory, renderRightPanel])
+    ctx.putImageData(out, 0, 0); pushHistory("Expand edge"); tick()
+  }, [getFgCtx, edgeRefine, pushHistory, tick])
 
   const applyErode = React.useCallback(() => {
     const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
@@ -571,8 +572,8 @@ export function BackgroundRemover() {
       let m = 255; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const px = x + dx, py = y + dy; if (px >= 0 && px < w && py >= 0 && py < h) m = Math.min(m, data.data[(py * w + px) * 4 + 3]) }
       out.data[(y * w + x) * 4 + 3] = m
     }
-    ctx.putImageData(out, 0, 0); pushHistory("Shrink edge"); renderRightPanel()
-  }, [getFgCtx, edgeRefine, pushHistory, renderRightPanel])
+    ctx.putImageData(out, 0, 0); pushHistory("Shrink edge"); tick()
+  }, [getFgCtx, edgeRefine, pushHistory, tick])
 
   const applyTransparency = React.useCallback(() => {
     const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
@@ -580,8 +581,8 @@ export function BackgroundRemover() {
     const data = ctx.getImageData(0, 0, w, h)
     const f = transparency / 100
     for (let i = 0; i < data.data.length; i += 4) data.data[i + 3] = Math.round(data.data[i + 3] * f)
-    ctx.putImageData(data, 0, 0); pushHistory("Opacity"); renderRightPanel()
-  }, [getFgCtx, transparency, pushHistory, renderRightPanel])
+    ctx.putImageData(data, 0, 0); pushHistory("Opacity"); tick()
+  }, [getFgCtx, transparency, pushHistory, tick])
 
   const applyCrop = React.useCallback(() => {
     const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
@@ -596,9 +597,9 @@ export function BackgroundRemover() {
     const cctx = c.getContext("2d")!; cctx.drawImage(fgCanvasRef.current, cx, cy, cw, ch, 0, 0, cw, ch)
     fgCanvasRef.current.width = cw; fgCanvasRef.current.height = ch
     ctx.drawImage(c, 0, 0)
-    pushHistory("Crop"); renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+    pushHistory("Crop"); tick(); fitZoom("left"); fitZoom("right")
     toast.success("Cropped")
-  }, [getFgCtx, pushHistory, renderRightPanel, renderLeftPanel, fitZoom])
+  }, [getFgCtx, pushHistory, tick, fitZoom])
 
   const applyRotate = React.useCallback((cw: boolean) => {
     const fg = fgCanvasRef.current; if (!fg) return
@@ -609,8 +610,8 @@ export function BackgroundRemover() {
     cctx.drawImage(fg, -w / 2, -h / 2)
     fg.width = h; fg.height = w
     fg.getContext("2d")!.drawImage(c, 0, 0)
-    pushHistory(`Rotate ${cw ? "R" : "L"}`); renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
-  }, [pushHistory, renderRightPanel, renderLeftPanel, fitZoom])
+    pushHistory(`Rotate ${cw ? "R" : "L"}`); tick(); fitZoom("left"); fitZoom("right")
+  }, [pushHistory, tick, fitZoom])
 
   const applyFlip = React.useCallback((horizontal: boolean) => {
     const fg = fgCanvasRef.current; if (!fg) return
@@ -623,17 +624,17 @@ export function BackgroundRemover() {
     const tc = document.createElement("canvas"); tc.width = w; tc.height = h
     tc.getContext("2d")!.putImageData(temp, 0, 0)
     ctx.drawImage(tc, 0, 0); ctx.restore()
-    pushHistory(horizontal ? "Flip H" : "Flip V"); renderRightPanel(); renderLeftPanel()
-  }, [pushHistory, renderRightPanel, renderLeftPanel])
+    pushHistory(horizontal ? "Flip H" : "Flip V"); tick()
+  }, [pushHistory, tick])
 
   const applyMagicEraser = React.useCallback((x: number, y: number) => {
     const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
     const data = ctx.getImageData(0, 0, fgCanvasRef.current.width, fgCanvasRef.current.height)
     const result = floodFill(data, x, y, brushThreshold, 0)
     ctx.putImageData(result, 0, 0)
-    pushHistory("Magic erase"); renderRightPanel()
+    pushHistory("Magic erase"); tick()
     toast.success("Area erased")
-  }, [getFgCtx, brushThreshold, pushHistory, renderRightPanel])
+  }, [getFgCtx, brushThreshold, pushHistory, tick])
 
   const undo = React.useCallback(() => {
     if (histIdx <= 0 || !fgCanvasRef.current) return
@@ -643,8 +644,8 @@ export function BackgroundRemover() {
     fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
     ctx.putImageData(entry.data, 0, 0)
     setHistIdx(ni)
-    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
-  }, [histIdx, history, renderRightPanel, renderLeftPanel, fitZoom])
+    tick(); fitZoom("left"); fitZoom("right")
+  }, [histIdx, history, tick, fitZoom])
 
   const redo = React.useCallback(() => {
     if (histIdx >= history.length - 1 || !fgCanvasRef.current) return
@@ -654,8 +655,8 @@ export function BackgroundRemover() {
     fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
     ctx.putImageData(entry.data, 0, 0)
     setHistIdx(ni)
-    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
-  }, [histIdx, history, renderRightPanel, renderLeftPanel, fitZoom])
+    tick(); fitZoom("left"); fitZoom("right")
+  }, [histIdx, history, tick, fitZoom])
 
   const jumpToHistory = React.useCallback((idx: number) => {
     if (idx < 0 || idx >= history.length || !fgCanvasRef.current) return
@@ -664,8 +665,8 @@ export function BackgroundRemover() {
     fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
     ctx.putImageData(entry.data, 0, 0)
     setHistIdx(idx)
-    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
-  }, [history, renderRightPanel, renderLeftPanel, fitZoom])
+    tick(); fitZoom("left"); fitZoom("right")
+  }, [history, tick, fitZoom])
 
   const reset = React.useCallback(() => {
     if (history.length === 0 || !fgCanvasRef.current) return
@@ -674,9 +675,9 @@ export function BackgroundRemover() {
     fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
     ctx.putImageData(entry.data, 0, 0)
     setHistIdx(0)
-    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+    tick(); fitZoom("left"); fitZoom("right")
     toast.success("Reset to initial")
-  }, [history, renderRightPanel, renderLeftPanel, fitZoom])
+  }, [history, tick, fitZoom])
 
   const handleExport = React.useCallback(async () => {
     if (!fgCanvasRef.current) { toast.error("No image to export"); return }
@@ -735,7 +736,7 @@ export function BackgroundRemover() {
     el.style.borderRadius = brushCfg.hardness >= 100 ? "50%" : `${brushCfg.hardness / 100 * 50}%`
   }, [brushCfg.size, brushCfg.hardness, rightZoom])
 
-  if (!fgCanvasRef.current || images.length === 0 || !originalSrcRef.current) {
+  if (!fgCanvasData || images.length === 0 || !originalSrc) {
     return (
       <div className="mx-auto max-w-5xl space-y-6" onDrop={handleDrop} onDragOver={e => { e.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)}>
         <Card className={cn("relative overflow-hidden border-dashed transition-all", isDragging && "border-primary bg-primary/5")}>
@@ -832,7 +833,7 @@ export function BackgroundRemover() {
             />
           </div>
           <div className="px-3 py-1 border-t border-border bg-muted/20 text-[10px] text-muted-foreground text-right">
-            {fgCanvasRef.current?.width}×{fgCanvasRef.current?.height} &middot; {Math.round(leftZoom * 100)}%
+            {fgCanvasData?.canvas?.width ?? 0}×{fgCanvasData?.canvas?.height ?? 0} &middot; {Math.round(leftZoom * 100)}%
           </div>
         </Panel>
 
@@ -894,7 +895,7 @@ export function BackgroundRemover() {
             )}
           </div>
           <div className="px-3 py-1 border-t border-border bg-muted/20 text-[10px] text-muted-foreground flex justify-between items-center">
-            <span>{fgCanvasRef.current?.width}×{fgCanvasRef.current?.height} &middot; {Math.round(rightZoom * 100)}%</span>
+            <span>{fgCanvasData?.canvas?.width ?? 0}×{fgCanvasData?.canvas?.height ?? 0} &middot; {Math.round(rightZoom * 100)}%</span>
             <span className="text-[10px] text-muted-foreground">Hist: {histIdx + 1}/{history.length}</span>
           </div>
         </Panel>
