@@ -336,18 +336,19 @@ export function BackgroundRemover() {
     setProcessing(true)
     setImages(prev => prev.map((item, i) => i === idx ? { ...item, processing: true, progress: 0, error: null } : item))
     try {
-      const { removeBackground } = await import("@imgly/background-removal")
+      setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 10 } : item))
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/remove-bg", { method: "POST", body: formData })
       if (cancelledRef.current) return
-      setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 15 } : item))
-      const blob = await removeBackground(file, {
-        model: "isnet", rescale: true,
-        progress: (_k: string, cur: number, tot: number) => {
-          if (cancelledRef.current) throw new Error("Cancelled")
-          const pct = tot > 0 ? cur / tot : 0
-          setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 15 + Math.round(pct * 75) } : item))
-        },
-      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }))
+        throw new Error(err.error || "Background removal failed")
+      }
+      setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 60 } : item))
+      const blob = await res.blob()
       if (cancelledRef.current) return
+      setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 80 } : item))
       const url = URL.createObjectURL(blob)
       resultBlobRef.current = url
 
@@ -1024,7 +1025,7 @@ export function BackgroundRemover() {
         {(active?.processing || processing) && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground"><RefreshCw className="h-4 w-4 animate-spin text-teal-500" /> Processing with ISNet AI...</div>
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground"><RefreshCw className="h-4 w-4 animate-spin text-teal-500" /> Processing with Remove.bg AI...</div>
             <div className="h-2 w-72 overflow-hidden rounded-full bg-muted">
               <motion.div initial={{ width: 0 }} animate={{ width: `${active?.progress || 0}%` }} transition={{ duration: 0.3 }}
                 className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500" />
