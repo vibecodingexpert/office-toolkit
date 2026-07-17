@@ -144,12 +144,31 @@ export function BackgroundRemover() {
     canvas.height = h
 
     if (showResult && active.editedData) {
-      const bgCanvas = document.createElement("canvas")
-      bgCanvas.width = w; bgCanvas.height = h
-      const bgCtx = bgCanvas.getContext("2d")!
-      renderBackground(bgCtx, w, h, bgOption, bgColor, bgColor2, gradientType, blurRadius, customBg, patternType, active.originalSrc)
-      ctx.drawImage(bgCanvas, 0, 0)
-      ctx.putImageData(active.editedData, 0, 0)
+      if (bgOption === "blur") {
+        const img = new Image()
+        img.onload = () => {
+          ctx.filter = `blur(${blurRadius}px)`
+          ctx.drawImage(img, 0, 0, w, h)
+          ctx.filter = "none"
+          const fgCanvas = document.createElement("canvas")
+          fgCanvas.width = w; fgCanvas.height = h
+          const fgCtx = fgCanvas.getContext("2d")!
+          fgCtx.putImageData(active.editedData!, 0, 0)
+          ctx.drawImage(fgCanvas, 0, 0)
+        }
+        img.src = active.originalSrc
+      } else {
+        const bgCanvas = document.createElement("canvas")
+        bgCanvas.width = w; bgCanvas.height = h
+        const bgCtx = bgCanvas.getContext("2d")!
+        renderBackground(bgCtx, w, h, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
+        ctx.drawImage(bgCanvas, 0, 0)
+        const fgCanvas = document.createElement("canvas")
+        fgCanvas.width = w; fgCanvas.height = h
+        const fgCtx = fgCanvas.getContext("2d")!
+        fgCtx.putImageData(active.editedData, 0, 0)
+        ctx.drawImage(fgCanvas, 0, 0)
+      }
     } else {
       ctx.putImageData(data, 0, 0)
     }
@@ -446,8 +465,20 @@ export function BackgroundRemover() {
       const c = document.createElement("canvas")
       c.width = data.width; c.height = data.height
       const ctx = c.getContext("2d")!
-      if (exportFormat === "jpeg") { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, data.width, data.height) }
-      ctx.putImageData(data, 0, 0)
+      if (bgOption === "transparent" && exportFormat === "jpeg") {
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, data.width, data.height)
+      } else if (bgOption !== "transparent") {
+        const bgCanvas = document.createElement("canvas")
+        bgCanvas.width = data.width; bgCanvas.height = data.height
+        const bgCtx = bgCanvas.getContext("2d")!
+        renderBackground(bgCtx, data.width, data.height, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
+        ctx.drawImage(bgCanvas, 0, 0)
+      }
+      const fgCanvas = document.createElement("canvas")
+      fgCanvas.width = data.width; fgCanvas.height = data.height
+      const fgCtx = fgCanvas.getContext("2d")!
+      fgCtx.putImageData(data, 0, 0)
+      ctx.drawImage(fgCanvas, 0, 0)
       const mime = exportFormat === "png" ? "image/png" : exportFormat === "jpeg" ? "image/jpeg" : "image/webp"
       const blob = await new Promise<Blob | null>((res) => c.toBlob(res, mime, exportQuality / 100))
       if (!blob) { toast.error("Export failed"); return }
@@ -459,13 +490,16 @@ export function BackgroundRemover() {
       toast.success(`Downloaded as ${exportFormat.toUpperCase()}`)
     } catch { toast.error("Export failed") }
     finally { setExporting(false) }
-  }, [active, exportFormat, exportQuality])
+  }, [active, exportFormat, exportQuality, bgOption, bgColor, bgColor2, gradientType, customBg, patternType])
 
   const mouseToCanvas = React.useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = displayRef.current?.getBoundingClientRect()
-    if (!rect) return { x: 0, y: 0 }
-    return { x: Math.floor((e.clientX - rect.left) / zoom), y: Math.floor((e.clientY - rect.top) / zoom) }
-  }, [zoom])
+    const canvas = displayRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    return { x: Math.floor((e.clientX - rect.left) * scaleX), y: Math.floor((e.clientY - rect.top) * scaleY) }
+  }, [])
 
   const handleCanvasDown = React.useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!active?.editedData) return
@@ -630,38 +664,16 @@ export function BackgroundRemover() {
         </AnimatePresence>
 
         {/* Before/After slider overlay */}
-        {active?.resultSrc && active?.editedData && showResult && (() => {
-          const SliderOverlay = () => {
-            const sliderRef = React.useRef<HTMLDivElement>(null)
-            const [activeSl, setActiveSl] = React.useState(false)
-            return (
-              <div ref={sliderRef} className="absolute inset-0 z-10" style={{ pointerEvents: activeSl ? "auto" : "none" }}>
-                <div className="absolute inset-0 overflow-hidden" style={{ width: `${sliderPos}%`, pointerEvents: "none" }}>
-                  <canvas ref={(el) => {
-                    if (!el || !active?.originalData) return
-                    const w = active.originalData.width, h = active.originalData.height
-                    el.width = w; el.height = h
-                    const ctx = el.getContext("2d")
-                    if (ctx) ctx.putImageData(active.originalData, 0, 0)
-                  }}
-                    style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: "center center", maxWidth: "none" }}
-                    className="absolute top-0 left-0" />
-                </div>
-                <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg cursor-col-resize z-20"
-                  style={{ left: `${sliderPos}%`, transform: "translateX(-50%)", pointerEvents: "auto" }}
-                  onMouseDown={(e) => { e.preventDefault(); setActiveSl(true) }}
-                  onMouseMove={(e) => { if (activeSl) { const r = sliderRef.current?.getBoundingClientRect(); if (r) setSliderPos(((e.clientX - r.left) / r.width) * 100) } }}
-                  onMouseUp={() => setActiveSl(false)}
-                  onMouseLeave={() => setActiveSl(false)}>
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-primary">
-                    <ArrowLeftRight className="h-4 w-4 text-primary" />
-                  </div>
-                </div>
-              </div>
-            )
-          }
-          return <SliderOverlay />
-        })()}
+        {active?.resultSrc && active?.editedData && showResult && (
+          <SliderOverlay
+            originalData={active.originalData}
+            zoom={zoom}
+            panX={panX}
+            panY={panY}
+            sliderPos={sliderPos}
+            onSliderChange={setSliderPos}
+          />
+        )}
       </div>
 
       {/* Toolbar */}
@@ -789,7 +801,44 @@ function PopBtn({ icon, label, children }: { icon: React.ReactNode; label: strin
   )
 }
 
-function renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number, opt: BgOption, c1: string, c2: string, grad: string, blur: number, custom: string | null, pattern: string, originalSrc: string) {
+function SliderOverlay({ originalData, zoom, panX, panY, sliderPos, onSliderChange }: {
+  originalData: ImageData | null; zoom: number; panX: number; panY: number; sliderPos: number; onSliderChange: (v: number) => void
+}) {
+  const sliderRef = React.useRef<HTMLDivElement>(null)
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const [activeSl, setActiveSl] = React.useState(false)
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !originalData) return
+    canvas.width = originalData.width
+    canvas.height = originalData.height
+    const ctx = canvas.getContext("2d")
+    if (ctx) ctx.putImageData(originalData, 0, 0)
+  }, [originalData])
+
+  return (
+    <div ref={sliderRef} className="absolute inset-0 z-10" style={{ pointerEvents: activeSl ? "auto" : "none" }}>
+      <div className="absolute inset-0 overflow-hidden" style={{ width: `${sliderPos}%`, pointerEvents: "none" }}>
+        <canvas ref={canvasRef}
+          style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: "center center", maxWidth: "none" }}
+          className="absolute top-0 left-0" />
+      </div>
+      <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg cursor-col-resize z-20"
+        style={{ left: `${sliderPos}%`, transform: "translateX(-50%)", pointerEvents: "auto" }}
+        onMouseDown={(e) => { e.preventDefault(); setActiveSl(true) }}
+        onMouseMove={(e) => { if (activeSl) { const r = sliderRef.current?.getBoundingClientRect(); if (r) onSliderChange(((e.clientX - r.left) / r.width) * 100) } }}
+        onMouseUp={() => setActiveSl(false)}
+        onMouseLeave={() => setActiveSl(false)}>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-primary">
+          <ArrowLeftRight className="h-4 w-4 text-primary" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number, opt: BgOption, c1: string, c2: string, grad: string, custom: string | null, pattern: string) {
   if (opt === "transparent") {
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h)
     ctx.fillStyle = "#e5e7eb"
@@ -804,10 +853,6 @@ function renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number, o
     else g = ctx.createLinearGradient(0, 0, w, h)
     g.addColorStop(0, c1); g.addColorStop(1, c2)
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
-  } else if (opt === "blur") {
-    const img = new Image(); img.crossOrigin = "anonymous"
-    img.onload = () => { ctx.filter = `blur(${blur}px)`; ctx.drawImage(img, 0, 0, w, h) }
-    img.src = originalSrc
   } else if (opt === "custom" && custom) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, w, h); img.src = custom }
   else if (opt === "pattern") {
     ctx.fillStyle = c1; ctx.fillRect(0, 0, w, h); ctx.fillStyle = c2
