@@ -23,90 +23,6 @@ const ERROR_CORRECTION = [
   { label: "H (High)", value: "H" },
 ]
 
-function getQRModules(text: string, ecLevel: string): boolean[][] {
-  const len = text.length
-  const version = Math.max(1, Math.min(10, Math.ceil(len / 10)))
-  const size = 17 + version * 4
-  const modules: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false))
-
-  const finderPattern = [
-    [1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 1, 1, 0, 1],
-    [1, 0, 1, 1, 1, 0, 1],
-    [1, 0, 1, 1, 1, 0, 1],
-    [1, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1],
-  ]
-
-  for (let r = 0; r < 7; r++) {
-    for (let c = 0; c < 7; c++) {
-      if (r < finderPattern.length && c < finderPattern[r].length) {
-        modules[r][c] = finderPattern[r][c] === 1
-        modules[r][size - 7 + c] = finderPattern[r][c] === 1
-        modules[size - 7 + r][c] = finderPattern[r][c] === 1
-      }
-    }
-  }
-
-  const separators = [
-    { r: 7, c: [0, 1, 2, 3, 4, 5, 6, 7] },
-    { r: [0, 1, 2, 3, 4, 5, 6, 7], c: 7 },
-    { r: 7, c: [size - 7, size - 6, size - 5, size - 4, size - 3, size - 2, size - 1] },
-    { r: [0, 1, 2, 3, 4, 5, 6, 7], c: size - 8 },
-    { r: [size - 8], c: [0, 1, 2, 3, 4, 5, 6, 7] },
-    { r: [size - 7, size - 6, size - 5, size - 4, size - 3, size - 2, size - 1], c: 7 },
-  ]
-
-  for (const sep of separators) {
-    if (typeof sep.r === "number" && Array.isArray(sep.c)) {
-      for (const c of sep.c) if (c >= 0 && c < size) modules[sep.r][c] = false
-    } else if (Array.isArray(sep.r) && typeof sep.c === "number") {
-      for (const r of sep.r) if (r >= 0 && r < size) modules[r][sep.c] = false
-    }
-  }
-
-  const timingSize = size - 16
-  for (let i = 8; i < 8 + timingSize; i++) {
-    if (i < size) {
-      modules[6][i] = i % 2 === 0
-      modules[i][6] = i % 2 === 0
-    }
-  }
-
-  const dataBits: number[] = []
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i)
-    for (let b = 7; b >= 0; b--) {
-      dataBits.push((code >> b) & 1)
-    }
-  }
-
-  const totalModules = (size - 16) * (size - 16) - 2 * 8 * 8 + 1
-  while (dataBits.length < totalModules) {
-    dataBits.push(0)
-  }
-
-  let bitIdx = 0
-  for (let row = size - 1; row >= 0; row -= 2) {
-    if (row === 6) row = 5
-    for (let col = size - 1; col >= 0; col -= 2) {
-      for (let c of [col, col - 1]) {
-        if (c < 0 || row >= size || c >= size) continue
-        if (modules[row][c] === undefined || (row < 8 && c < 8) ||
-            (row < 8 && c >= size - 8) || (row >= size - 8 && c < 8) ||
-            row === 6 || c === 6) continue
-        if (bitIdx < dataBits.length) {
-          modules[row][c] = dataBits[bitIdx] === 1
-          bitIdx++
-        }
-      }
-    }
-  }
-
-  return modules
-}
-
 export function QrGenerator() {
   const [text, setText] = React.useState("https://example.com")
   const [size, setSize] = React.useState(300)
@@ -116,32 +32,22 @@ export function QrGenerator() {
   const [resultUrl, setResultUrl] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
 
-  const generateQR = React.useCallback(() => {
+  const generateQR = React.useCallback(async () => {
     if (!text.trim()) { toast.error("Please enter text or URL"); return }
-    const modules = getQRModules(text, ecLevel)
-    const moduleSize = Math.floor(size / modules.length)
-    const offset = Math.floor((size - moduleSize * modules.length) / 2)
-    const canvas = document.createElement("canvas")
-    canvas.width = size; canvas.height = size
-    const ctx = canvas.getContext("2d")
-    if (!ctx) { toast.error("Canvas not available"); return }
-    ctx.fillStyle = bgColor
-    ctx.fillRect(0, 0, size, size)
-    ctx.fillStyle = fgColor
-    for (let r = 0; r < modules.length; r++) {
-      for (let c = 0; c < modules[r].length; c++) {
-        if (modules[r][c]) {
-          ctx.fillRect(offset + c * moduleSize, offset + r * moduleSize, moduleSize, moduleSize)
-        }
-      }
-    }
-    canvas.toBlob((blob) => {
-      if (!blob) { toast.error("Failed to generate QR"); return }
-      const url = URL.createObjectURL(blob)
+    try {
+      const QRCode = (await import("qrcode")).default
+      const url = await QRCode.toDataURL(text, {
+        width: size,
+        color: { dark: fgColor, light: bgColor },
+        margin: 2,
+        errorCorrectionLevel: ecLevel as "L" | "M" | "Q" | "H",
+      })
       if (resultUrl) URL.revokeObjectURL(resultUrl)
       setResultUrl(url)
       toast.success("QR code generated")
-    }, "image/png")
+    } catch {
+      toast.error("Failed to generate QR code")
+    }
   }, [text, size, fgColor, bgColor, ecLevel, resultUrl])
 
   const handleCopy = React.useCallback(async () => {
