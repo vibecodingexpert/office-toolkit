@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils/cn"
 import { useToolStore } from "@/lib/store/use-tool-store"
@@ -24,7 +24,6 @@ import {
   Clock,
   Settings,
   HelpCircle,
-  LogOut,
   PanelLeftClose,
   PanelLeft,
 } from "lucide-react"
@@ -50,6 +49,7 @@ const bottomLinks = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const {
     selectedCategory,
     setSelectedCategory,
@@ -58,6 +58,8 @@ export function Sidebar() {
     favorites,
     recentTools,
   } = useToolStore()
+
+  const isOnTools = pathname === "/tools"
 
   const favoriteTools = React.useMemo(
     () => tools.filter((t) => favorites.includes(t.id)),
@@ -141,10 +143,13 @@ export function Sidebar() {
 
           {/* All Tools */}
           <button
-            onClick={() => setSelectedCategory("all")}
+            onClick={() => {
+              setSelectedCategory("all")
+              if (!isOnTools) router.push("/tools")
+            }}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              selectedCategory === "all"
+              selectedCategory === "all" && isOnTools
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
               !isSidebarOpen && "justify-center px-0"
@@ -153,7 +158,7 @@ export function Sidebar() {
             <div
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                selectedCategory === "all"
+                selectedCategory === "all" && isOnTools
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground"
               )}
@@ -176,11 +181,14 @@ export function Sidebar() {
 
           {/* Category items */}
           {categories.map((category) => {
-            const isActive = selectedCategory === category.id
+            const isActive = selectedCategory === category.id && isOnTools
             return (
               <button
                 key={category.id}
-                onClick={() => setSelectedCategory(category.id)}
+                onClick={() => {
+                  setSelectedCategory(category.id)
+                  if (!isOnTools) router.push("/tools")
+                }}
                 className={cn(
                   "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive

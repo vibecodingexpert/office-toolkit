@@ -11,8 +11,10 @@ interface ToolStore {
   favorites: string[]
   addFavorite: (toolId: string) => void
   removeFavorite: (toolId: string) => void
+  clearFavorites: () => void
   isFavorite: (toolId: string) => boolean
   recentTools: string[]
+  clearRecentTools: () => void
   addRecent: (toolId: string) => void
   isSidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
@@ -39,8 +41,10 @@ export const useToolStore = create<ToolStore>((set, get) => ({
     set((state) => ({
       favorites: state.favorites.filter((id) => id !== toolId),
     })),
+  clearFavorites: () => set({ favorites: [] }),
   isFavorite: (toolId) => get().favorites.includes(toolId),
   recentTools: [],
+  clearRecentTools: () => set({ recentTools: [] }),
   addRecent: (toolId) =>
     set((state) => ({
       recentTools: [

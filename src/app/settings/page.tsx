@@ -4,9 +4,8 @@ import * as React from "react"
 import { motion } from "framer-motion"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useToolStore } from "@/lib/store/use-tool-store"
-import { Moon, Sun, Monitor, Trash2, Bell, Eye } from "lucide-react"
+import { Moon, Sun, Monitor, Trash2, Eye } from "lucide-react"
 
 const themes = [
   { id: "light" as const, label: "Light", icon: Sun, description: "Light mode for daytime use" },
@@ -15,11 +14,7 @@ const themes = [
 ]
 
 export default function SettingsPage() {
-  const { theme, setTheme, recentTools, favorites, addRecent, addFavorite, removeFavorite } = useToolStore()
-
-  const handleClearRecent = () => {
-    useToolStore.setState({ recentTools: [] })
-  }
+  const { theme, setTheme, recentTools, favorites, clearRecentTools, clearFavorites } = useToolStore()
 
   return (
     <DashboardLayout>
@@ -81,7 +76,7 @@ export default function SettingsPage() {
                   <p className="text-sm font-medium text-foreground">Recent Tools History</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{recentTools.length} tools in history</p>
                 </div>
-                <button onClick={handleClearRecent} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                <button onClick={clearRecentTools} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
                   Clear History
                 </button>
               </div>
@@ -91,7 +86,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">{favorites.length} saved tools</p>
                 </div>
                 {favorites.length > 0 && (
-                  <button onClick={() => useToolStore.setState({ favorites: [] })} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors">
+                  <button onClick={clearFavorites} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors">
                     Clear All
                   </button>
                 )}
