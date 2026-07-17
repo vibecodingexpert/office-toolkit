@@ -42,11 +42,10 @@ export function Navbar({ variant = "default" }: NavbarProps) {
     <header
       className={cn(
         "fixed top-0 z-40 h-16 transition-all duration-300",
-        isDashboard
-          ? "right-0 bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
-          : "inset-x-0",
-        isDashboard && isSidebarOpen && "md:left-[260px]",
-        isDashboard && !isSidebarOpen && "md:left-[72px]",
+        !isDashboard && "inset-x-0",
+        isDashboard && "right-0 bg-background/80 backdrop-blur-lg border-b border-border shadow-sm",
+        isDashboard && isSidebarOpen && "md:left-[260px] left-0",
+        isDashboard && !isSidebarOpen && "md:left-[72px] left-0",
         !isDashboard && isScrolled && "bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
       )}
     >
