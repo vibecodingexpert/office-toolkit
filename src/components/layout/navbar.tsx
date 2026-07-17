@@ -41,9 +41,9 @@ export function Navbar({ variant = "default" }: NavbarProps) {
       className={cn(
         "fixed top-0 z-40 h-16 transition-all duration-300",
         isDashboard
-          ? "left-0 md:left-[72px] lg:left-[260px] right-0"
+          ? "left-0 md:left-[72px] lg:left-[260px] right-0 bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
           : "inset-x-0",
-        isScrolled && "bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
+        !isDashboard && isScrolled && "bg-background/80 backdrop-blur-lg border-b border-border shadow-sm"
       )}
     >
       <nav className={cn(
