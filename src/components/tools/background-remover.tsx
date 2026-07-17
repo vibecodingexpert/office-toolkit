@@ -7,107 +7,58 @@ import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, RefreshCw, Sparkles,
-  Scissors, RotateCw, RotateCcw, FlipHorizontal, FlipVertical,
+  Upload, Download, RefreshCw, Sparkles, Scissors,
+  RotateCw, RotateCcw, FlipHorizontal, FlipVertical,
   Undo2, Redo2, Trash2, ZoomIn, ZoomOut, Maximize2, Expand,
   Brush, Eraser, Sliders, PaintBucket, X, AlertTriangle, FileImage, Plus,
+  Eye, EyeOff, Crop, SplitSquareVertical, Layers, Pointer,
+  Minus, Plus as PlusIcon, Palette, History, Image,
 } from "lucide-react"
 
-const SUPPORTED_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".avif"]
+const SUPPORTED = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".avif"]
 const MAX_FILE_SIZE = 50 * 1024 * 1024
-const MAX_HISTORY = 30
+const MAX_HISTORY = 50
 
-function fmtSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
+function fmtSize(b: number) {
+  if (b < 1024) return `${b} B`
+  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / 1048576).toFixed(1)} MB`
 }
 
-function validateFile(file: File): string | null {
-  const ext = "." + file.name.split(".").pop()?.toLowerCase()
-  if (!SUPPORTED_EXTS.includes(ext)) return `Unsupported format: ${ext}. Use JPG, PNG, WEBP, HEIC, or AVIF.`
-  if (file.size > MAX_FILE_SIZE) return `Image too large: ${fmtSize(file.size)}. Maximum is 50 MB.`
+function validateFile(f: File): string | null {
+  const ext = "." + (f.name.split(".").pop()?.toLowerCase() || "")
+  if (!SUPPORTED.includes(ext)) return `Unsupported format: ${ext}`
+  if (f.size > MAX_FILE_SIZE) return `Image too large: ${fmtSize(f.size)}. Max 50 MB.`
   return null
 }
 
+type ToolType = "brush" | "restore" | "pan" | "none"
+type MaskView = "normal" | "mask" | "overlay" | "split"
 type BgOption = "transparent" | "solid" | "gradient" | "blur" | "custom" | "pattern"
-type BrushMode = "erase" | "restore"
 
-interface HistoryEntry {
-  data: ImageData
-  width: number
-  height: number
+interface BrushCfg {
+  size: number; hardness: number; opacity: number; flow: number; spacing: number
 }
 
-interface ImageItem {
-  id: string
-  file: File
-  originalSrc: string
-  resultBlobUrl: string | null
-  width: number
-  height: number
-  processing: boolean
-  progress: number
-  error: string | null
+interface HistEntry {
+  id: string; name: string; data: ImageData; w: number; h: number
 }
 
-function hexToRgb(hex: string) {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return { r, g, b }
+function hexToRgb(h: string) {
+  return { r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) }
 }
 
-function applyFloodFill(data: ImageData, sx: number, sy: number, threshold: number, setAlpha: number): ImageData {
-  const w = data.width, h = data.height
-  const out = new ImageData(new Uint8ClampedArray(data.data), w, h)
-  const startA = out.data[(sy * w + sx) * 4 + 3]
-  if (startA === setAlpha) return out
-  const visited = new Uint8Array(w * h)
-  const stack: [number, number][] = [[sx, sy]]
-  while (stack.length > 0) {
-    const [x, y] = stack.pop()!
-    if (x < 0 || x >= w || y < 0 || y >= h) continue
-    const idx = y * w + x
-    if (visited[idx]) continue
-    visited[idx] = 1
-    const pi = idx * 4
-    if (Math.abs(out.data[pi + 3] - startA) > threshold) continue
-    out.data[pi + 3] = setAlpha
-    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1])
-  }
-  return out
-}
-
-function applyGaussianBlurAlpha(data: ImageData, radius: number): ImageData {
-  const w = data.width, h = data.height
-  const src = new Float32Array(data.data.buffer.slice(0))
-  const dst = new Float32Array(w * h)
-  const r = Math.max(1, radius), sigma = r / 2, size = r * 2 + 1
+function gaussBlurAlpha(src: Float32Array, w: number, h: number, r: number): Float32Array {
+  const sigma = r / 2, size = r * 2 + 1
   const kernel = new Float32Array(size)
   let sum = 0
   for (let i = 0; i < size; i++) { const x = i - r; const v = Math.exp(-(x * x) / (2 * sigma * sigma)); kernel[i] = v; sum += v }
   for (let i = 0; i < size; i++) kernel[i] /= sum
   const temp = new Float32Array(w * h)
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let kx = 0; kx < size; kx++) { const px = x + kx - r; if (px >= 0 && px < w) s += src[(y * w + px) * 4 + 3] * kernel[kx] }; temp[y * w + x] = s }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let kx = 0; kx < size; kx++) { const px = x + kx - r; if (px >= 0 && px < w) s += src[(y * w + px)] * kernel[kx] }; temp[y * w + x] = s }
+  const dst = new Float32Array(w * h)
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let ky = 0; ky < size; ky++) { const py = y + ky - r; if (py >= 0 && py < h) s += temp[py * w + x] * kernel[ky] }; dst[y * w + x] = s }
-  const out = new ImageData(w, h)
-  for (let i = 0; i < w * h; i++) { out.data[i * 4] = src[i * 4]; out.data[i * 4 + 1] = src[i * 4 + 1]; out.data[i * 4 + 2] = src[i * 4 + 2]; out.data[i * 4 + 3] = Math.round(dst[i]) }
-  return out
-}
-
-function applyDilateAlpha(data: ImageData, radius: number): ImageData {
-  const w = data.width, h = data.height, r = Math.max(1, radius)
-  const out = new ImageData(new Uint8ClampedArray(data.data), w, h)
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let m = 0; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const px = x + dx, py = y + dy; if (px >= 0 && px < w && py >= 0 && py < h) m = Math.max(m, data.data[(py * w + px) * 4 + 3]) }; out.data[(y * w + x) * 4 + 3] = m }
-  return out
-}
-
-function applyErodeAlpha(data: ImageData, radius: number): ImageData {
-  const w = data.width, h = data.height, r = Math.max(1, radius)
-  const out = new ImageData(new Uint8ClampedArray(data.data), w, h)
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let m = 255; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const px = x + dx, py = y + dy; if (px >= 0 && px < w && py >= 0 && py < h) m = Math.min(m, data.data[(py * w + px) * 4 + 3]) }; out.data[(y * w + x) * 4 + 3] = m }
-  return out
+  return dst
 }
 
 function computeAlphaBounds(data: ImageData) {
@@ -118,36 +69,105 @@ function computeAlphaBounds(data: ImageData) {
   for (let y = h - 1; y >= 0 && b === -1; y--) for (let x = 0; x < w; x++) if (data.data[(y * w + x) * 4 + 3] > 0) { b = y; break }
   for (let x = 0; x < w && l === -1; x++) for (let y = 0; y < h; y++) if (data.data[(y * w + x) * 4 + 3] > 0) { l = x; break }
   for (let x = w - 1; x >= 0 && r === -1; x--) for (let y = 0; y < h; y++) if (data.data[(y * w + x) * 4 + 3] > 0) { r = x; break }
-  return { top: t, left: l, bottom: b, right: r }
+  return { t, l, b, r }
 }
 
-function renderBackgroundToCtx(ctx: CanvasRenderingContext2D, w: number, h: number, opt: BgOption, c1: string, c2: string, gradType: string, customSrc: string | null, pattern: string) {
+function renderBg(ctx: CanvasRenderingContext2D, w: number, h: number, opt: BgOption, c1: string, c2: string, gt: string, custom: string | null, pat: string) {
   if (opt === "transparent") {
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h)
-    ctx.fillStyle = "#e5e7eb"
-    const s = 8
+    ctx.fillStyle = "#e5e7eb"; const s = 8
     for (let y = 0; y < h; y += s) for (let x = 0; x < w; x += s) if ((Math.floor(x / s) + Math.floor(y / s)) % 2 === 1) ctx.fillRect(x, y, s, s)
-  } else if (opt === "solid") { ctx.fillStyle = c1; ctx.fillRect(0, 0, w, h) }
-  else if (opt === "gradient") {
+    return
+  }
+  if (opt === "solid") { ctx.fillStyle = c1; ctx.fillRect(0, 0, w, h); return }
+  if (opt === "gradient") {
     let g: CanvasGradient
-    if (gradType === "linear-top") g = ctx.createLinearGradient(0, 0, 0, h)
-    else if (gradType === "linear-right") g = ctx.createLinearGradient(0, 0, w, 0)
-    else if (gradType === "radial") g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) / 2)
+    if (gt === "linear-top") g = ctx.createLinearGradient(0, 0, 0, h)
+    else if (gt === "linear-right") g = ctx.createLinearGradient(0, 0, w, 0)
+    else if (gt === "radial") g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) / 2)
     else g = ctx.createLinearGradient(0, 0, w, h)
-    g.addColorStop(0, c1); g.addColorStop(1, c2)
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
-  } else if (opt === "custom" && customSrc) {
-    const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, w, h); img.src = customSrc
-  } else if (opt === "pattern") {
+    g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); return
+  }
+  if (opt === "custom" && custom) { const img = document.createElement("img"); img.onload = () => ctx.drawImage(img, 0, 0, w, h); img.src = custom; return }
+  if (opt === "pattern") {
     ctx.fillStyle = c1; ctx.fillRect(0, 0, w, h); ctx.fillStyle = c2
-    if (pattern === "checkerboard") { const s = 16; for (let y = 0; y < h; y += s) for (let x = 0; x < w; x += s) if ((Math.floor(x / s) + Math.floor(y / s)) % 2 === 1) ctx.fillRect(x, y, s, s) }
-    else if (pattern === "dots") { const sp = 20; for (let y = sp / 2; y < h; y += sp) for (let x = sp / 2; x < w; x += sp) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill() } }
-    else if (pattern === "stripes") { for (let x = 0; x < w; x += 20) ctx.fillRect(x, 0, 10, h) }
+    if (pat === "checkerboard") { const s = 16; for (let y = 0; y < h; y += s) for (let x = 0; x < w; x += s) if ((Math.floor(x / s) + Math.floor(y / s)) % 2 === 1) ctx.fillRect(x, y, s, s) }
+    else if (pat === "dots") { const sp = 20; for (let y = sp / 2; y < h; y += sp) for (let x = sp / 2; x < w; x += sp) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill() } }
+    else if (pat === "stripes") { for (let x = 0; x < w; x += 20) ctx.fillRect(x, 0, 10, h) }
   }
 }
 
-function cloneImageData(data: ImageData): ImageData {
-  return new ImageData(new Uint8ClampedArray(data.data), data.width, data.height)
+function compositeOverBg(fg: ImageData, opt: BgOption, c1: string, c2: string, gt: string, custom: string | null, pat: string): ImageData {
+  const w = fg.width, h = fg.height
+  const bg = document.createElement("canvas"); bg.width = w; bg.height = h
+  const bctx = bg.getContext("2d")!; renderBg(bctx, w, h, opt, c1, c2, gt, custom, pat)
+  const bgData = bctx.getImageData(0, 0, w, h)
+  const out = new ImageData(w, h)
+  for (let i = 0; i < w * h; i++) {
+    const fi = i * 4, a = fg.data[fi + 3]
+    if (a === 0) { out.data[fi] = bgData.data[fi]; out.data[fi + 1] = bgData.data[fi + 1]; out.data[fi + 2] = bgData.data[fi + 2]; out.data[fi + 3] = 255 }
+    else if (a === 255) { out.data[fi] = fg.data[fi]; out.data[fi + 1] = fg.data[fi + 1]; out.data[fi + 2] = fg.data[fi + 2]; out.data[fi + 3] = 255 }
+    else {
+      const fa = a / 255, ba = 1 - fa
+      out.data[fi] = Math.round(fg.data[fi] * fa + bgData.data[fi] * ba)
+      out.data[fi + 1] = Math.round(fg.data[fi + 1] * fa + bgData.data[fi + 1] * ba)
+      out.data[fi + 2] = Math.round(fg.data[fi + 2] * fa + bgData.data[fi + 2] * ba)
+      out.data[fi + 3] = 255
+    }
+  }
+  return out
+}
+
+function brushDab(data: Uint8ClampedArray, w: number, h: number, cx: number, cy: number, r: number, hardness: number, opacity: number, flow: number, erase: boolean) {
+  const innerR = r * hardness
+  const falloff = r - innerR
+  const minX = Math.max(0, Math.floor(cx - r)), maxX = Math.min(w - 1, Math.ceil(cx + r))
+  const minY = Math.max(0, Math.floor(cy - r)), maxY = Math.min(h - 1, Math.ceil(cy + r))
+  const f = (opacity / 100) * (flow / 100)
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+      if (dist > r) continue
+      const str = dist <= innerR ? 1 : 1 - (dist - innerR) / falloff
+      const delta = Math.round(str * f * 255)
+      const idx = (y * w + x) * 4 + 3
+      if (erase) data[idx] = Math.max(0, data[idx] - delta)
+      else data[idx] = Math.min(255, data[idx] + delta)
+    }
+  }
+}
+
+function floodFill(data: ImageData, sx: number, sy: number, threshold: number, setA: number): ImageData {
+  const w = data.width, h = data.height
+  const out = new ImageData(new Uint8ClampedArray(data.data), w, h)
+  const startA = out.data[(sy * w + sx) * 4 + 3]
+  if (startA === setA) return out
+  const visited = new Uint8Array(w * h)
+  const stack: [number, number][] = [[sx, sy]]
+  while (stack.length > 0) {
+    const [x, y] = stack.pop()!
+    if (x < 0 || x >= w || y < 0 || y >= h) continue
+    const idx = y * w + x
+    if (visited[idx]) continue
+    visited[idx] = 1
+    const pi = idx * 4
+    if (Math.abs(out.data[pi + 3] - startA) > threshold) continue
+    out.data[pi + 3] = setA
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1])
+  }
+  return out
+}
+
+function cloneImageData(d: ImageData): ImageData {
+  return new ImageData(new Uint8ClampedArray(d.data), d.width, d.height)
+}
+
+function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("flex flex-col rounded-xl border border-border bg-card overflow-hidden", className)}>
+      {children}
+    </div>
+  )
 }
 
 export function BackgroundRemover() {
@@ -156,24 +176,13 @@ export function BackgroundRemover() {
   const [processing, setProcessing] = React.useState(false)
   const cancelledRef = React.useRef(false)
 
-  const [resultCanvas, setResultCanvas] = React.useState<HTMLCanvasElement | null>(null)
-  const [editCanvas, setEditCanvas] = React.useState<HTMLCanvasElement | null>(null)
-  const layerRef = React.useRef<HTMLCanvasElement>(null)
-
-  const [zoom, setZoom] = React.useState(1)
-  const [panX, setPanX] = React.useState(0)
-  const [panY, setPanY] = React.useState(0)
-  const [showResult, setShowResult] = React.useState(true)
-  const [sliderPos, setSliderPos] = React.useState(50)
-  const [viewMode, setViewMode] = React.useState<"fit" | "original">("fit")
-
-  const [activeTool, setActiveTool] = React.useState<string | null>(null)
-  const [brushMode, setBrushMode] = React.useState<BrushMode>("erase")
-  const [brushSize, setBrushSize] = React.useState(20)
+  const [activeTool, setActiveTool] = React.useState<ToolType>("none")
+  const [brushCfg, setBrushCfg] = React.useState<BrushCfg>({ size: 30, hardness: 80, opacity: 100, flow: 100, spacing: 10 })
   const [brushThreshold, setBrushThreshold] = React.useState(30)
-  const [featherRadius, setFeatherRadius] = React.useState(2)
-  const [edgeRefine, setEdgeRefine] = React.useState(1)
-  const [transparency, setTransparency] = React.useState(100)
+
+  const [maskView, setMaskView] = React.useState<MaskView>("normal")
+  const [sliderPos, setSliderPos] = React.useState(50)
+  const [showRightOriginal, setShowRightOriginal] = React.useState(false)
 
   const [bgOption, setBgOption] = React.useState<BgOption>("transparent")
   const [bgColor, setBgColor] = React.useState("#ffffff")
@@ -182,111 +191,124 @@ export function BackgroundRemover() {
   const [blurRadius, setBlurRadius] = React.useState(10)
   const [customBg, setCustomBg] = React.useState<string | null>(null)
   const [patternType, setPatternType] = React.useState("checkerboard")
+  const [featherRadius, setFeatherRadius] = React.useState(2)
+  const [edgeRefine, setEdgeRefine] = React.useState(1)
+  const [transparency, setTransparency] = React.useState(100)
 
   const [exportFormat, setExportFormat] = React.useState<"png" | "jpeg" | "webp">("png")
   const [exportQuality, setExportQuality] = React.useState(95)
   const [exporting, setExporting] = React.useState(false)
 
-  const [history, setHistory] = React.useState<HistoryEntry[]>([])
-  const [historyIdx, setHistoryIdx] = React.useState(-1)
+  const [history, setHistory] = React.useState<HistEntry[]>([])
+  const [histIdx, setHistIdx] = React.useState(-1)
+
+  const [leftZoom, setLeftZoom] = React.useState(1)
+  const [leftPanX, setLeftPanX] = React.useState(0)
+  const [leftPanY, setLeftPanY] = React.useState(0)
+  const [rightZoom, setRightZoom] = React.useState(1)
+  const [rightPanX, setRightPanX] = React.useState(0)
+  const [rightPanY, setRightPanY] = React.useState(0)
 
   const [isDragging, setIsDragging] = React.useState(false)
   const brushDrawingRef = React.useRef(false)
-  const panStartRef = React.useRef<{ x: number; y: number } | null>(null)
+  const panStartRef = React.useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
+  const lastDabRef = React.useRef<{ x: number; y: number } | null>(null)
 
-  const displayRef = React.useRef<HTMLCanvasElement>(null)
   const fileRef = React.useRef<HTMLInputElement>(null)
   const bgFileRef = React.useRef<HTMLInputElement>(null)
-  const containerRef = React.useRef<HTMLDivElement>(null)
+  const leftCanvasRef = React.useRef<HTMLCanvasElement>(null)
+  const rightCanvasRef = React.useRef<HTMLCanvasElement>(null)
+  const leftContainerRef = React.useRef<HTMLDivElement>(null)
+  const rightContainerRef = React.useRef<HTMLDivElement>(null)
+  const brushCursorRef = React.useRef<HTMLDivElement>(null)
+
+  const originalSrcRef = React.useRef<string | null>(null)
+  const fgCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const resultBlobRef = React.useRef<string | null>(null)
 
   const active = images[activeIdx]
 
-  const pushHistory = React.useCallback((data: ImageData, w: number, h: number) => {
-    setHistory(prev => {
-      const trimmed = prev.slice(0, historyIdx + 1)
-      const next = [...trimmed, { data: cloneImageData(data), width: w, height: h }]
-      return next.length > MAX_HISTORY ? next.slice(-MAX_HISTORY) : next
-    })
-    setHistoryIdx(prev => Math.min(prev + 1, MAX_HISTORY - 1))
-  }, [historyIdx])
+  interface ImageItem {
+    id: string; file: File; originalSrc: string; width: number; height: number
+    processing: boolean; progress: number; error: string | null
+  }
 
-  React.useEffect(() => {
-    if (!active?.resultBlobUrl) return
-    const c = document.createElement("canvas")
-    const img = new Image()
-    img.onload = () => {
-      c.width = img.width
-      c.height = img.height
-      const ctx = c.getContext("2d")!
-      ctx.drawImage(img, 0, 0)
-      setResultCanvas(c)
-      const w = img.width, h = img.height
-      const layer = document.createElement("canvas")
-      layer.width = w
-      layer.height = h
-      const lctx = layer.getContext("2d")!
-      lctx.drawImage(img, 0, 0)
-      setEditCanvas(layer)
-      const data = lctx.getImageData(0, 0, w, h)
-      pushHistory(data, w, h)
-      setImages(prev => prev.map((item, i) =>
-        i === activeIdx ? { ...item, width: w, height: h } : item
-      ))
-    }
-    img.src = active.resultBlobUrl
-  }, [active?.resultBlobUrl])
+  const getFgCtx = React.useCallback(() => fgCanvasRef.current?.getContext("2d") || null, [])
 
-  const renderDisplay = React.useCallback(() => {
-    const canvas = displayRef.current
-    const layer = layerRef.current
-    if (!canvas || !editCanvas || !active) return
+  const renderRightPanel = React.useCallback(() => {
+    const canvas = rightCanvasRef.current
+    const fgCanvas = fgCanvasRef.current
+    if (!canvas || !fgCanvas || !originalSrcRef.current) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const w = editCanvas.width, h = editCanvas.height
-    canvas.width = w
-    canvas.height = h
+    const w = fgCanvas.width, h = fgCanvas.height
+    canvas.width = w; canvas.height = h
 
-    if (showResult) {
-      if (bgOption === "transparent") {
-        ctx.drawImage(editCanvas, 0, 0)
-      } else {
-        if (bgOption === "blur") {
-          const img = new Image()
-          img.onload = () => {
-            ctx.filter = `blur(${blurRadius}px)`
-            ctx.drawImage(img, 0, 0, w, h)
-            ctx.filter = "none"
-            ctx.drawImage(editCanvas, 0, 0)
-          }
-          img.src = active.originalSrc
-          return
-        }
-        const bgCanvas = document.createElement("canvas")
-        bgCanvas.width = w; bgCanvas.height = h
-        const bgCtx = bgCanvas.getContext("2d")!
-        renderBackgroundToCtx(bgCtx, w, h, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
-        ctx.drawImage(bgCanvas, 0, 0)
-        ctx.drawImage(editCanvas, 0, 0)
-      }
-    } else {
-      const img = new Image()
+    if (showRightOriginal) {
+      const img = document.createElement("img")
       img.onload = () => ctx.drawImage(img, 0, 0, w, h)
-      img.src = active.originalSrc
+      img.src = originalSrcRef.current
+      return
     }
-  }, [editCanvas, active, showResult, bgOption, bgColor, bgColor2, gradientType, blurRadius, customBg, patternType])
 
-  React.useEffect(() => { renderDisplay() }, [renderDisplay])
+    if (maskView === "normal") {
+      const fg = ctx.getImageData(0, 0, w, h)
+      const composited = compositeOverBg(fg, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
+      ctx.putImageData(composited, 0, 0)
+    } else if (maskView === "mask") {
+      const fg = fgCanvas.getContext("2d")!.getImageData(0, 0, w, h)
+      const out = new ImageData(w, h)
+      for (let i = 0; i < w * h; i++) {
+        const a = fg.data[i * 4 + 3]
+        out.data[i * 4] = a; out.data[i * 4 + 1] = a; out.data[i * 4 + 2] = a; out.data[i * 4 + 3] = 255
+      }
+      ctx.putImageData(out, 0, 0)
+    } else if (maskView === "overlay") {
+      const img = document.createElement("img")
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, w, h)
+        const fg = fgCanvas.getContext("2d")!.getImageData(0, 0, w, h)
+        const over = new ImageData(w, h)
+        for (let i = 0; i < w * h; i++) {
+          const fi = i * 4, a = fg.data[fi + 3]
+          over.data[fi] = fg.data[fi]; over.data[fi + 1] = fg.data[fi + 1]; over.data[fi + 2] = fg.data[fi + 2]; over.data[fi + 3] = Math.round(a * 0.5)
+        }
+        ctx.putImageData(over, 0, 0)
+      }
+      img.src = originalSrcRef.current
+    }
+  }, [maskView, bgOption, bgColor, bgColor2, gradientType, customBg, patternType, showRightOriginal])
 
-  const fitZoom = React.useCallback(() => {
-    if (!active || !editCanvas || !containerRef.current) return
-    const cw = containerRef.current.clientWidth - 32
-    const ch = containerRef.current.clientHeight - 32
-    if (editCanvas.width === 0 || editCanvas.height === 0) return
-    setZoom(Math.min(cw / editCanvas.width, ch / editCanvas.height, 2))
-    setPanX(0); setPanY(0); setViewMode("fit")
-  }, [active, editCanvas])
+  React.useEffect(() => { renderRightPanel() }, [renderRightPanel])
 
-  React.useEffect(() => { if (active && editCanvas) fitZoom() }, [active?.id, editCanvas?.width, editCanvas?.height])
+  const renderLeftPanel = React.useCallback(() => {
+    const canvas = leftCanvasRef.current
+    if (!canvas || !originalSrcRef.current) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    const img = document.createElement("img")
+    img.onload = () => {
+      canvas.width = img.width; canvas.height = img.height
+      ctx.drawImage(img, 0, 0)
+    }
+    img.src = originalSrcRef.current
+  }, [])
+
+  React.useEffect(() => { renderLeftPanel() }, [renderLeftPanel])
+
+  const pushHistory = React.useCallback((name: string) => {
+    const ctx = getFgCtx()
+    if (!ctx || !fgCanvasRef.current) return
+    const w = fgCanvasRef.current.width, h = fgCanvasRef.current.height
+    const id = crypto.randomUUID()
+    const data = ctx.getImageData(0, 0, w, h)
+    setHistory(prev => {
+      const t = prev.slice(0, histIdx + 1)
+      const next = [...t, { id, name, data: cloneImageData(data), w, h }]
+      return next.length > MAX_HISTORY ? next.slice(-MAX_HISTORY) : next
+    })
+    setHistIdx(prev => Math.min(prev + 1, MAX_HISTORY - 1))
+  }, [getFgCtx, histIdx])
 
   const addImage = React.useCallback((file: File) => {
     const err = validateFile(file)
@@ -295,23 +317,12 @@ export function BackgroundRemover() {
     const r = new FileReader()
     r.onload = (ev) => {
       const src = ev.target?.result as string
-      const img = new Image()
+      const img = document.createElement("img")
       img.onload = () => {
-        const item: ImageItem = {
-          id, file, originalSrc: src, resultBlobUrl: null,
-          width: img.width, height: img.height,
-          processing: true, progress: 0, error: null,
-        }
+        const item: ImageItem = { id, file, originalSrc: src, width: img.width, height: img.height, processing: true, progress: 0, error: null }
         const nextIdx = images.length
         setImages(prev => [...prev, item])
         setActiveIdx(nextIdx)
-        setShowResult(true)
-        setSliderPos(50)
-        setZoom(1)
-        setPanX(0); setPanY(0)
-        setHistory([]); setHistoryIdx(-1)
-        setEditCanvas(null)
-        setResultCanvas(null)
         processWithAI(file, nextIdx)
       }
       img.src = src
@@ -322,78 +333,88 @@ export function BackgroundRemover() {
   const processWithAI = React.useCallback(async (file: File, idx: number) => {
     cancelledRef.current = false
     setProcessing(true)
-    setImages(prev => prev.map((item, i) =>
-      i === idx ? { ...item, processing: true, progress: 0, error: null } : item
-    ))
+    setImages(prev => prev.map((item, i) => i === idx ? { ...item, processing: true, progress: 0, error: null } : item))
     try {
       const { removeBackground } = await import("@imgly/background-removal")
       if (cancelledRef.current) return
-      setImages(prev => prev.map((item, i) =>
-        i === idx ? { ...item, progress: 15 } : item
-      ))
+      setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 15 } : item))
       const blob = await removeBackground(file, {
-        model: "isnet",
-        rescale: true,
-        progress: (_key: string, current: number, total: number) => {
+        model: "isnet", rescale: true,
+        progress: (_k: string, cur: number, tot: number) => {
           if (cancelledRef.current) throw new Error("Cancelled")
-          const pct = total > 0 ? current / total : 0
-          setImages(prev => prev.map((item, i) =>
-            i === idx ? { ...item, progress: 15 + Math.round(pct * 75) } : item
-          ))
+          const pct = tot > 0 ? cur / tot : 0
+          setImages(prev => prev.map((item, i) => i === idx ? { ...item, progress: 15 + Math.round(pct * 75) } : item))
         },
       })
       if (cancelledRef.current) return
       const url = URL.createObjectURL(blob)
-      setImages(prev => prev.map((item, i) =>
-        i === idx ? { ...item, resultBlobUrl: url, processing: false, progress: 100 } : item
-      ))
-      setProcessing(false)
-      toast.success("Background removed")
+      resultBlobRef.current = url
+
+      const blobImg = document.createElement("img")
+      blobImg.onload = () => {
+        const c = document.createElement("canvas")
+        c.width = blobImg.width; c.height = blobImg.height
+        const ctx = c.getContext("2d")!
+        ctx.drawImage(blobImg, 0, 0)
+        fgCanvasRef.current = c
+
+        setImages(prev => prev.map((item, i) => i === idx ? { ...item, width: blobImg.width, height: blobImg.height, processing: false, progress: 100 } : item))
+        setProcessing(false)
+
+        originalSrcRef.current = URL.createObjectURL(file)
+        setHistory([])
+        setHistIdx(-1)
+        renderLeftPanel()
+        renderRightPanel()
+
+        const data = ctx.getImageData(0, 0, c.width, c.height)
+        setHistory([{ id: crypto.randomUUID(), name: "Initial", data: cloneImageData(data), w: c.width, h: c.height }])
+        setHistIdx(0)
+
+        fitZoom("left"); fitZoom("right")
+        toast.success("Background removed")
+      }
+      blobImg.src = url
     } catch (err: any) {
       if (err?.message === "Cancelled") return
       console.error(err)
-      setImages(prev => prev.map((item, i) =>
-        i === idx ? { ...item, processing: false, error: "AI processing failed. Try a different image." } : item
-      ))
+      setImages(prev => prev.map((item, i) => i === idx ? { ...item, processing: false, error: "AI processing failed." } : item))
       setProcessing(false)
       toast.error("AI processing failed")
     }
+  }, [renderLeftPanel, renderRightPanel])
+
+  const fitZoom = React.useCallback((side: "left" | "right") => {
+    const container = side === "left" ? leftContainerRef.current : rightContainerRef.current
+    const fgCanvas = fgCanvasRef.current
+    if (!container || !fgCanvas) return
+    const cw = container.clientWidth - 32, ch = container.clientHeight - 32
+    if (fgCanvas.width === 0 || fgCanvas.height === 0) return
+    const z = Math.min(cw / fgCanvas.width, ch / fgCanvas.height, 2)
+    if (side === "left") { setLeftZoom(z); setLeftPanX(0); setLeftPanY(0) }
+    else { setRightZoom(z); setRightPanX(0); setRightPanY(0) }
   }, [])
 
-  const getEditCtx = React.useCallback((): CanvasRenderingContext2D | null => {
-    return editCanvas?.getContext("2d") || null
-  }, [editCanvas])
-
-  const applyToLayer = React.useCallback((fn: (ctx: CanvasRenderingContext2D, w: number, h: number) => void) => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    fn(ctx, w, h)
-    pushHistory(before, w, h)
-    renderDisplay()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay])
+  React.useEffect(() => {
+    if (fgCanvasRef.current) { fitZoom("left"); fitZoom("right") }
+  }, [fgCanvasRef.current?.width, fgCanvasRef.current?.height])
 
   const cancelProcessing = React.useCallback(() => {
-    cancelledRef.current = true
-    setProcessing(false)
+    cancelledRef.current = true; setProcessing(false)
     setImages(prev => prev.map(item => ({ ...item, processing: false })))
     toast.info("Cancelled")
   }, [])
 
   const removeImage = React.useCallback((id: string) => {
-    const prevLen = images.length
     setImages(prev => {
       const idx = prev.findIndex(i => i.id === id)
       const next = prev.filter(i => i.id !== id)
-      if (next.length === 0) setActiveIdx(0)
+      if (next.length === 0) { setActiveIdx(0); fgCanvasRef.current = null; originalSrcRef.current = null; setHistory([]); setHistIdx(-1) }
       else if (idx <= activeIdx && activeIdx > 0) setActiveIdx(a => a - 1)
       else if (activeIdx >= next.length) setActiveIdx(next.length - 1)
       return next
     })
-    if (prevLen <= 1) { setEditCanvas(null); setResultCanvas(null) }
-    setHistory([]); setHistoryIdx(-1)
-  }, [activeIdx, images.length])
+  }, [activeIdx])
 
   const handleFileInput = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     Array.from(e.target.files || []).forEach(f => addImage(f))
@@ -421,266 +442,300 @@ export function BackgroundRemover() {
     } catch { toast.error("No image in clipboard") }
   }, [addImage])
 
-  const reprocessActive = React.useCallback(() => {
+  const reprocess = React.useCallback(async () => {
     if (!active?.file) return
-    setEditCanvas(null)
-    setResultCanvas(null)
-    setHistory([]); setHistoryIdx(-1)
-    processWithAI(active.file, activeIdx)
-  }, [active, activeIdx, processWithAI])
+    fgCanvasRef.current = null; originalSrcRef.current = null; setHistory([]); setHistIdx(-1)
+    pushHistory("Initial")
+    await processWithAI(active.file, activeIdx)
+  }, [active, activeIdx, processWithAI, pushHistory])
 
-  const brushStroke = React.useCallback((x: number, y: number) => {
-    if (!editCanvas || activeTool !== "brush") return
-    const w = editCanvas.width, h = editCanvas.height
-    const ctx = editCanvas.getContext("2d")!
+  const applyBrushDab = React.useCallback((cx: number, cy: number) => {
+    const ctx = getFgCtx()
+    const fg = fgCanvasRef.current
+    if (!ctx || !fg) return
+    const w = fg.width, h = fg.height
     const data = ctx.getImageData(0, 0, w, h)
-    const d = data.data
-    const r = brushSize / 2
-    for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
-      for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
-        const px = x + dx, py = y + dy
-        if (px < 0 || px >= w || py < 0 || py >= h) continue
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist > r) continue
-        const alpha = Math.round(255 * (1 - dist / r)) * 2
-        const pi = (py * w + px) * 4
-        if (brushMode === "erase") d[pi + 3] = Math.max(0, d[pi + 3] - alpha)
-        else d[pi + 3] = Math.min(255, d[pi + 3] + alpha)
+    brushDab(data.data, w, h, cx, cy, brushCfg.size / 2, brushCfg.hardness / 100, brushCfg.opacity, brushCfg.flow, activeTool === "brush")
+    ctx.putImageData(data, 0, 0)
+    renderRightPanel()
+  }, [getFgCtx, brushCfg, activeTool, renderRightPanel])
+
+  const drawBrushLine = React.useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    const spacing = Math.max(1, brushCfg.spacing)
+    const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    const steps = Math.max(1, Math.floor(dist / spacing))
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t
+      applyBrushDab(x, y)
+    }
+  }, [brushCfg.spacing, applyBrushDab])
+
+  const mouseToCanvas = React.useCallback((e: React.MouseEvent, side: "left" | "right") => {
+    const canvas = side === "left" ? leftCanvasRef.current : rightCanvasRef.current
+    const fg = fgCanvasRef.current
+    if (!canvas || !fg) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = fg.width / rect.width, scaleY = fg.height / rect.height
+    return { x: Math.floor((e.clientX - rect.left) * scaleX), y: Math.floor((e.clientY - rect.top) * scaleY) }
+  }, [])
+
+  const handleRightDown = React.useCallback((e: React.MouseEvent) => {
+    if (activeTool === "brush" || activeTool === "restore") {
+      brushDrawingRef.current = true
+      const p = mouseToCanvas(e, "right")
+      lastDabRef.current = p
+      applyBrushDab(p.x, p.y)
+    } else if (activeTool === "pan" || (activeTool === "none" && e.button === 1)) {
+      panStartRef.current = { x: e.clientX, y: e.clientY, panX: rightPanX, panY: rightPanY }
+    }
+  }, [activeTool, mouseToCanvas, applyBrushDab, rightPanX, rightPanY])
+
+  const handleRightMove = React.useCallback((e: React.MouseEvent) => {
+    if ((activeTool === "brush" || activeTool === "restore") && brushDrawingRef.current) {
+      const p = mouseToCanvas(e, "right")
+      if (lastDabRef.current) drawBrushLine(lastDabRef.current.x, lastDabRef.current.y, p.x, p.y)
+      else applyBrushDab(p.x, p.y)
+      lastDabRef.current = p
+
+      if (brushCursorRef.current) {
+        brushCursorRef.current.style.left = `${e.clientX}px`
+        brushCursorRef.current.style.top = `${e.clientY}px`
       }
     }
-    ctx.putImageData(data, 0, 0)
-    renderDisplay()
-  }, [editCanvas, activeTool, brushSize, brushMode, renderDisplay])
+    if (panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.x, dy = e.clientY - panStartRef.current.y
+      setRightPanX(panStartRef.current.panX + dx); setRightPanY(panStartRef.current.panY + dy)
+    }
+  }, [activeTool, mouseToCanvas, drawBrushLine, applyBrushDab])
+
+  const handleRightUp = React.useCallback(() => {
+    if (brushDrawingRef.current && (activeTool === "brush" || activeTool === "restore")) {
+      pushHistory(activeTool === "brush" ? "Brush stroke" : "Restore stroke")
+    }
+    brushDrawingRef.current = false; panStartRef.current = null; lastDabRef.current = null
+  }, [activeTool, pushHistory])
+
+  const handleLeftDown = React.useCallback((e: React.MouseEvent) => {
+    panStartRef.current = { x: e.clientX, y: e.clientY, panX: leftPanX, panY: leftPanY }
+  }, [leftPanX, leftPanY])
+
+  const handleLeftMove = React.useCallback((e: React.MouseEvent) => {
+    if (panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.x, dy = e.clientY - panStartRef.current.y
+      setLeftPanX(panStartRef.current.panX + dx); setLeftPanY(panStartRef.current.panY + dy)
+    }
+  }, [])
+
+  const handleLeftUp = React.useCallback(() => { panStartRef.current = null }, [])
+
+  const handleWheel = React.useCallback((e: React.WheelEvent, side: "left" | "right") => {
+    e.preventDefault()
+    const factor = e.deltaY > 0 ? 0.9 : 1.1
+    if (side === "left") setLeftZoom(z => Math.max(0.1, Math.min(10, z * factor)))
+    else setRightZoom(z => Math.max(0.1, Math.min(10, z * factor)))
+  }, [])
 
   const applyFeather = React.useCallback(() => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const result = applyGaussianBlurAlpha(before, featherRadius)
-    ctx.putImageData(result, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay, featherRadius])
+    const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
+    const w = fgCanvasRef.current.width, h = fgCanvasRef.current.height
+    const data = ctx.getImageData(0, 0, w, h)
+    const alpha = new Float32Array(w * h)
+    for (let i = 0; i < w * h; i++) alpha[i] = data.data[i * 4 + 3]
+    const blurred = gaussBlurAlpha(alpha, w, h, featherRadius)
+    for (let i = 0; i < w * h; i++) data.data[i * 4 + 3] = Math.round(blurred[i])
+    ctx.putImageData(data, 0, 0)
+    pushHistory("Feather"); renderRightPanel()
+  }, [getFgCtx, featherRadius, pushHistory, renderRightPanel])
 
-  const applyEdgeExpand = React.useCallback(() => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const result = applyDilateAlpha(before, edgeRefine)
-    ctx.putImageData(result, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay, edgeRefine])
+  const applyDilate = React.useCallback(() => {
+    const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
+    const w = fgCanvasRef.current.width, h = fgCanvasRef.current.height
+    const data = ctx.getImageData(0, 0, w, h)
+    const out = new ImageData(new Uint8ClampedArray(data.data), w, h)
+    const r = Math.max(1, edgeRefine)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let m = 0; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const px = x + dx, py = y + dy; if (px >= 0 && px < w && py >= 0 && py < h) m = Math.max(m, data.data[(py * w + px) * 4 + 3]) }
+      out.data[(y * w + x) * 4 + 3] = m
+    }
+    ctx.putImageData(out, 0, 0); pushHistory("Expand edge"); renderRightPanel()
+  }, [getFgCtx, edgeRefine, pushHistory, renderRightPanel])
 
-  const applyEdgeShrink = React.useCallback(() => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const result = applyErodeAlpha(before, edgeRefine)
-    ctx.putImageData(result, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay, edgeRefine])
+  const applyErode = React.useCallback(() => {
+    const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
+    const w = fgCanvasRef.current.width, h = fgCanvasRef.current.height
+    const data = ctx.getImageData(0, 0, w, h)
+    const out = new ImageData(new Uint8ClampedArray(data.data), w, h)
+    const r = Math.max(1, edgeRefine)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let m = 255; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const px = x + dx, py = y + dy; if (px >= 0 && px < w && py >= 0 && py < h) m = Math.min(m, data.data[(py * w + px) * 4 + 3]) }
+      out.data[(y * w + x) * 4 + 3] = m
+    }
+    ctx.putImageData(out, 0, 0); pushHistory("Shrink edge"); renderRightPanel()
+  }, [getFgCtx, edgeRefine, pushHistory, renderRightPanel])
 
   const applyTransparency = React.useCallback(() => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const nd = cloneImageData(before)
+    const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
+    const w = fgCanvasRef.current.width, h = fgCanvasRef.current.height
+    const data = ctx.getImageData(0, 0, w, h)
     const f = transparency / 100
-    for (let i = 0; i < nd.data.length; i += 4) nd.data[i + 3] = Math.round(nd.data[i + 3] * f)
-    ctx.putImageData(nd, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay, transparency])
+    for (let i = 0; i < data.data.length; i += 4) data.data[i + 3] = Math.round(data.data[i + 3] * f)
+    ctx.putImageData(data, 0, 0); pushHistory("Opacity"); renderRightPanel()
+  }, [getFgCtx, transparency, pushHistory, renderRightPanel])
 
   const applyCrop = React.useCallback(() => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const bounds = computeAlphaBounds(before)
-    if (!bounds) { toast.error("No content to crop"); return }
-    const pad = 2
-    const cx = Math.max(0, bounds.left - pad)
-    const cy = Math.max(0, bounds.top - pad)
-    const cw = Math.min(w - cx, bounds.right - bounds.left + pad * 2)
-    const ch = Math.min(h - cy, bounds.bottom - bounds.top + pad * 2)
+    const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
+    const w = fgCanvasRef.current.width, h = fgCanvasRef.current.height
+    const data = ctx.getImageData(0, 0, w, h)
+    const b = computeAlphaBounds(data)
+    if (!b) { toast.error("No content to crop"); return }
+    const pad = 2, cx = Math.max(0, b.l - pad), cy = Math.max(0, b.t - pad)
+    const cw = Math.min(w - cx, b.r - b.l + pad * 2), ch = Math.min(h - cy, b.b - b.t + pad * 2)
     if (cw <= 0 || ch <= 0) { toast.error("Nothing to crop"); return }
     const c = document.createElement("canvas"); c.width = cw; c.height = ch
-    const cctx = c.getContext("2d")!
-    cctx.drawImage(editCanvas!, cx, cy, cw, ch, 0, 0, cw, ch)
-    editCanvas!.width = cw; editCanvas!.height = ch
-    cctx.drawImage(c, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
-    fitZoom()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay, fitZoom])
+    const cctx = c.getContext("2d")!; cctx.drawImage(fgCanvasRef.current, cx, cy, cw, ch, 0, 0, cw, ch)
+    fgCanvasRef.current.width = cw; fgCanvasRef.current.height = ch
+    ctx.drawImage(c, 0, 0)
+    pushHistory("Crop"); renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+    toast.success("Cropped")
+  }, [getFgCtx, pushHistory, renderRightPanel, renderLeftPanel, fitZoom])
 
-  const applyRotate = React.useCallback((clockwise: boolean) => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
+  const applyRotate = React.useCallback((cw: boolean) => {
+    const fg = fgCanvasRef.current; if (!fg) return
+    const ctx = fg.getContext("2d")!; const w = fg.width, h = fg.height
     const c = document.createElement("canvas"); c.width = h; c.height = w
     const cctx = c.getContext("2d")!
-    cctx.translate(h / 2, w / 2); cctx.rotate(clockwise ? Math.PI / 2 : -Math.PI / 2)
-    cctx.drawImage(editCanvas!, -w / 2, -h / 2)
-    editCanvas!.width = h; editCanvas!.height = w
-    const ectx = editCanvas!.getContext("2d")!
-    ectx.drawImage(c, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
-    fitZoom()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay, fitZoom])
+    cctx.translate(h / 2, w / 2); cctx.rotate(cw ? Math.PI / 2 : -Math.PI / 2)
+    cctx.drawImage(fg, -w / 2, -h / 2)
+    fg.width = h; fg.height = w
+    fg.getContext("2d")!.drawImage(c, 0, 0)
+    pushHistory(`Rotate ${cw ? "R" : "L"}`); renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+  }, [pushHistory, renderRightPanel, renderLeftPanel, fitZoom])
 
   const applyFlip = React.useCallback((horizontal: boolean) => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const ectx = editCanvas!.getContext("2d")!
-    ectx.clearRect(0, 0, w, h)
-    ectx.save()
-    ectx.translate(horizontal ? w : 0, horizontal ? 0 : h)
-    ectx.scale(horizontal ? -1 : 1, horizontal ? 1 : -1)
-    const temp = document.createElement("canvas")
-    temp.width = w; temp.height = h
-    temp.getContext("2d")!.putImageData(before, 0, 0)
-    ectx.drawImage(temp, 0, 0)
-    ectx.restore()
-    pushHistory(before, w, h)
-    renderDisplay()
-  }, [editCanvas, getEditCtx, pushHistory, renderDisplay])
+    const fg = fgCanvasRef.current; if (!fg) return
+    const ctx = fg.getContext("2d")!
+    const w = fg.width, h = fg.height
+    const temp = ctx.getImageData(0, 0, w, h)
+    ctx.clearRect(0, 0, w, h); ctx.save()
+    ctx.translate(horizontal ? w : 0, horizontal ? 0 : h)
+    ctx.scale(horizontal ? -1 : 1, horizontal ? 1 : -1)
+    const tc = document.createElement("canvas"); tc.width = w; tc.height = h
+    tc.getContext("2d")!.putImageData(temp, 0, 0)
+    ctx.drawImage(tc, 0, 0); ctx.restore()
+    pushHistory(horizontal ? "Flip H" : "Flip V"); renderRightPanel(); renderLeftPanel()
+  }, [pushHistory, renderRightPanel, renderLeftPanel])
 
   const applyMagicEraser = React.useCallback((x: number, y: number) => {
-    const ctx = getEditCtx()
-    if (!ctx) return
-    const w = editCanvas!.width, h = editCanvas!.height
-    const before = ctx.getImageData(0, 0, w, h)
-    const result = applyFloodFill(before, x, y, brushThreshold, 0)
+    const ctx = getFgCtx(); if (!ctx || !fgCanvasRef.current) return
+    const data = ctx.getImageData(0, 0, fgCanvasRef.current.width, fgCanvasRef.current.height)
+    const result = floodFill(data, x, y, brushThreshold, 0)
     ctx.putImageData(result, 0, 0)
-    pushHistory(before, w, h)
-    renderDisplay()
+    pushHistory("Magic erase"); renderRightPanel()
     toast.success("Area erased")
-  }, [editCanvas, getEditCtx, brushThreshold, pushHistory, renderDisplay])
+  }, [getFgCtx, brushThreshold, pushHistory, renderRightPanel])
 
   const undo = React.useCallback(() => {
-    if (historyIdx <= 0 || !editCanvas) return
-    const newIdx = historyIdx - 1
-    const entry = history[newIdx]
-    const ctx = editCanvas.getContext("2d")!
-    editCanvas.width = entry.width
-    editCanvas.height = entry.height
+    if (histIdx <= 0 || !fgCanvasRef.current) return
+    const ni = histIdx - 1
+    const entry = history[ni]
+    const ctx = fgCanvasRef.current.getContext("2d")!
+    fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
     ctx.putImageData(entry.data, 0, 0)
-    setHistoryIdx(newIdx)
-    renderDisplay()
-    fitZoom()
-  }, [historyIdx, history, editCanvas, renderDisplay, fitZoom])
+    setHistIdx(ni)
+    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+  }, [histIdx, history, renderRightPanel, renderLeftPanel, fitZoom])
 
   const redo = React.useCallback(() => {
-    if (historyIdx >= history.length - 1 || !editCanvas) return
-    const newIdx = historyIdx + 1
-    const entry = history[newIdx]
-    const ctx = editCanvas.getContext("2d")!
-    editCanvas.width = entry.width
-    editCanvas.height = entry.height
+    if (histIdx >= history.length - 1 || !fgCanvasRef.current) return
+    const ni = histIdx + 1
+    const entry = history[ni]
+    const ctx = fgCanvasRef.current.getContext("2d")!
+    fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
     ctx.putImageData(entry.data, 0, 0)
-    setHistoryIdx(newIdx)
-    renderDisplay()
-    fitZoom()
-  }, [historyIdx, history, editCanvas, renderDisplay, fitZoom])
+    setHistIdx(ni)
+    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+  }, [histIdx, history, renderRightPanel, renderLeftPanel, fitZoom])
+
+  const jumpToHistory = React.useCallback((idx: number) => {
+    if (idx < 0 || idx >= history.length || !fgCanvasRef.current) return
+    const entry = history[idx]
+    const ctx = fgCanvasRef.current.getContext("2d")!
+    fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
+    ctx.putImageData(entry.data, 0, 0)
+    setHistIdx(idx)
+    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+  }, [history, renderRightPanel, renderLeftPanel, fitZoom])
 
   const reset = React.useCallback(() => {
-    if (!resultCanvas || !editCanvas) return
-    const ctx = editCanvas.getContext("2d")!
-    const w = resultCanvas.width, h = resultCanvas.height
-    editCanvas.width = w
-    editCanvas.height = h
-    ctx.drawImage(resultCanvas, 0, 0)
-    const data = ctx.getImageData(0, 0, w, h)
-    setHistory([{ data: cloneImageData(data), width: w, height: h }])
-    setHistoryIdx(0)
-    renderDisplay()
-    fitZoom()
-    toast.success("Reset")
-  }, [resultCanvas, editCanvas, renderDisplay, fitZoom])
+    if (history.length === 0 || !fgCanvasRef.current) return
+    const entry = history[0]
+    const ctx = fgCanvasRef.current.getContext("2d")!
+    fgCanvasRef.current.width = entry.w; fgCanvasRef.current.height = entry.h
+    ctx.putImageData(entry.data, 0, 0)
+    setHistIdx(0)
+    renderRightPanel(); renderLeftPanel(); fitZoom("left"); fitZoom("right")
+    toast.success("Reset to initial")
+  }, [history, renderRightPanel, renderLeftPanel, fitZoom])
 
   const handleExport = React.useCallback(async () => {
-    if (!editCanvas) { toast.error("No result to export"); return }
+    if (!fgCanvasRef.current) { toast.error("No image to export"); return }
     setExporting(true)
     try {
-      const w = editCanvas.width, h = editCanvas.height
-      const c = document.createElement("canvas")
-      c.width = w; c.height = h
+      const fg = fgCanvasRef.current
+      const w = fg.width, h = fg.height
+      const c = document.createElement("canvas"); c.width = w; c.height = h
       const ctx = c.getContext("2d")!
       if (bgOption !== "transparent") {
-        const bgCanvas = document.createElement("canvas")
-        bgCanvas.width = w; bgCanvas.height = h
-        const bgCtx = bgCanvas.getContext("2d")!
-        renderBackgroundToCtx(bgCtx, w, h, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
-        ctx.drawImage(bgCanvas, 0, 0)
+        const bc = document.createElement("canvas"); bc.width = w; bc.height = h
+        const bctx = bc.getContext("2d")!
+        renderBg(bctx, w, h, bgOption, bgColor, bgColor2, gradientType, customBg, patternType)
+        ctx.drawImage(bc, 0, 0)
       }
-      ctx.drawImage(editCanvas, 0, 0)
+      ctx.drawImage(fg, 0, 0)
       const mime = exportFormat === "png" ? "image/png" : exportFormat === "jpeg" ? "image/jpeg" : "image/webp"
       const blob = await new Promise<Blob | null>(res => c.toBlob(res, mime, exportQuality / 100))
       if (!blob) { toast.error("Export failed"); return }
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
-      a.download = `background-removed.${exportFormat === "jpeg" ? "jpg" : exportFormat}`
+      a.download = `edited.${exportFormat === "jpeg" ? "jpg" : exportFormat}`
       a.href = url; a.click()
       URL.revokeObjectURL(url)
       toast.success(`Downloaded as ${exportFormat.toUpperCase()}`)
     } catch { toast.error("Export failed") }
     finally { setExporting(false) }
-  }, [editCanvas, exportFormat, exportQuality, bgOption, bgColor, bgColor2, gradientType, customBg, patternType])
+  }, [exportFormat, exportQuality, bgOption, bgColor, bgColor2, gradientType, customBg, patternType])
 
-  const mouseToCanvas = React.useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = displayRef.current
-    if (!canvas || !editCanvas) return { x: 0, y: 0 }
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = editCanvas.width / rect.width
-    const scaleY = editCanvas.height / rect.height
-    return { x: Math.floor((e.clientX - rect.left) * scaleX), y: Math.floor((e.clientY - rect.top) * scaleY) }
-  }, [editCanvas])
-
-  const handleCanvasDown = React.useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!editCanvas) return
-    if (activeTool === "brush") {
-      brushDrawingRef.current = true
-      const p = mouseToCanvas(e); brushStroke(p.x, p.y)
-    } else if (activeTool === "magic-eraser") {
-      const p = mouseToCanvas(e); applyMagicEraser(p.x, p.y)
-    } else if (e.button === 1 || (e.button === 0 && activeTool === null)) {
-      panStartRef.current = { x: e.clientX - panX, y: e.clientY - panY }
+  React.useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo() }
+      if (e.ctrlKey && e.key === "z" && e.shiftKey) { e.preventDefault(); redo() }
+      if (e.ctrlKey && e.key === "y") { e.preventDefault(); redo() }
+      if (e.ctrlKey && e.key === "s") { e.preventDefault(); handleExport() }
+      if (e.key === "b") setActiveTool(prev => prev === "brush" ? "none" : "brush")
+      if (e.key === "e") setActiveTool(prev => prev === "restore" ? "none" : "restore")
+      if (e.key === "h") setActiveTool(prev => prev === "pan" ? "none" : "pan")
+      if (e.key === "0") fitZoom("right")
+      if (e.key === "1") { setRightZoom(1); setRightPanX(0); setRightPanY(0) }
+      if (e.key === "r") applyRotate(true)
+      if (e.key === "[") setBrushCfg(p => ({ ...p, size: Math.max(1, p.size - 5) }))
+      if (e.key === "]") setBrushCfg(p => ({ ...p, size: Math.min(500, p.size + 5) }))
     }
-  }, [editCanvas, activeTool, mouseToCanvas, brushStroke, applyMagicEraser, panX, panY])
+    window.addEventListener("keydown", h)
+    return () => window.removeEventListener("keydown", h)
+  }, [undo, redo, handleExport, fitZoom, applyRotate])
 
-  const handleCanvasMove = React.useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (activeTool === "brush" && brushDrawingRef.current) {
-      const p = mouseToCanvas(e); brushStroke(p.x, p.y)
-    }
-    if (panStartRef.current) {
-      setPanX(e.clientX - panStartRef.current.x)
-      setPanY(e.clientY - panStartRef.current.y)
-    }
-  }, [activeTool, mouseToCanvas, brushStroke])
+  React.useEffect(() => {
+    const el = brushCursorRef.current
+    if (!el || !fgCanvasRef.current) return
+    const z = rightZoom
+    const displaySize = brushCfg.size * z
+    el.style.width = `${displaySize}px`
+    el.style.height = `${displaySize}px`
+    el.style.borderRadius = brushCfg.hardness >= 100 ? "50%" : `${brushCfg.hardness / 100 * 50}%`
+  }, [brushCfg.size, brushCfg.hardness, rightZoom])
 
-  const handleCanvasUp = React.useCallback(() => {
-    brushDrawingRef.current = false
-    panStartRef.current = null
-  }, [])
-
-  const handleWheel = React.useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    setZoom(z => Math.max(0.1, Math.min(10, z * (e.deltaY > 0 ? 0.9 : 1.1))))
-  }, [])
-
-  if (images.length === 0) {
+  if (!fgCanvasRef.current || images.length === 0 || !originalSrcRef.current) {
     return (
       <div className="mx-auto max-w-5xl space-y-6" onDrop={handleDrop} onDragOver={e => { e.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)}>
         <Card className={cn("relative overflow-hidden border-dashed transition-all", isDragging && "border-primary bg-primary/5")}>
@@ -708,282 +763,332 @@ export function BackgroundRemover() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4" onDrop={handleDrop} onDragOver={e => { e.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)}>
+    <div className="mx-auto max-w-7xl space-y-3" onDrop={handleDrop} onDragOver={e => { e.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)}>
       <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFileInput} className="hidden" />
       <input ref={bgFileRef} type="file" accept="image/*" onChange={e => {
         const f = e.target.files?.[0]
         if (f) { const r = new FileReader(); r.onload = ev => setCustomBg(ev.target?.result as string); r.readAsDataURL(f) }
       }} className="hidden" />
 
-      <Card className="p-3 sm:p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500/20 to-emerald-500/20 shadow-sm ring-1 ring-teal-500/10">
-              <Sparkles className="h-5 w-5 text-teal-500" />
+      <Card className="p-2 sm:p-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center gap-2 mr-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500/20 to-emerald-500/20 shadow-sm">
+              <Sparkles className="h-4 w-4 text-teal-500" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground sm:text-xl">Background Remover</h1>
-              <p className="text-xs text-muted-foreground hidden sm:block">AI-powered (ISNet) &middot; {editCanvas?.width || active?.width}×{editCanvas?.height || active?.height}</p>
-            </div>
+            <span className="text-sm font-bold text-foreground hidden sm:inline">Editor</span>
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto max-w-[200px] sm:max-w-xs">
-            {images.map((img, i) => (
-              <button key={img.id} onClick={() => { setActiveIdx(i); setShowResult(true); setSliderPos(50); setZoom(1); setPanX(0); setPanY(0) }}
-                className={cn("relative shrink-0 h-10 w-10 rounded-lg border-2 overflow-hidden transition-all", i === activeIdx ? "border-primary ring-1 ring-primary/30" : "border-border hover:border-primary/50")}>
-                <img src={img.originalSrc} alt="" className="h-full w-full object-cover" />
-                {img.processing && <div className="absolute inset-0 bg-background/60 flex items-center justify-center"><RefreshCw className="h-3 w-3 animate-spin text-primary" /></div>}
-                {img.error && <div className="absolute inset-0 bg-destructive/20 flex items-center justify-center"><AlertTriangle className="h-3 w-3 text-destructive" /></div>}
-              </button>
-            ))}
-            <button onClick={() => fileRef.current?.click()} className="shrink-0 flex h-10 w-10 items-center justify-center rounded-lg border-2 border-dashed border-border hover:border-primary/50 text-muted-foreground hover:text-primary transition-all">
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button variant="ghost" size="sm" onClick={handlePaste}><FileImage className="h-4 w-4" /></Button>
-            {active?.resultBlobUrl && <Button variant="ghost" size="sm" onClick={reprocessActive}><RefreshCw className="h-4 w-4" /></Button>}
-            {images.length > 1 && <Button variant="ghost" size="sm" onClick={() => removeImage(active!.id)} className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>}
+          <div className="w-px h-6 bg-border mx-1" />
+          <TBtn icon={<Brush className="h-3.5 w-3.5" />} label="Brush" tip="B" active={activeTool === "brush"} onClick={() => setActiveTool(activeTool === "brush" ? "none" : "brush")} />
+          <TBtn icon={<Eraser className="h-3.5 w-3.5" />} label="Restore" tip="E" active={activeTool === "restore"} onClick={() => setActiveTool(activeTool === "restore" ? "none" : "restore")} />
+          <TBtn icon={<Pointer className="h-3.5 w-3.5" />} label="Pan" tip="H" active={activeTool === "pan"} onClick={() => setActiveTool(activeTool === "pan" ? "none" : "pan")} />
+          <div className="w-px h-6 bg-border mx-1" />
+          <TBtn icon={<Undo2 className="h-3.5 w-3.5" />} label="Undo" tip="^Z" disabled={histIdx <= 0} onClick={undo} />
+          <TBtn icon={<Redo2 className="h-3.5 w-3.5" />} label="Redo" tip="^Y" disabled={histIdx >= history.length - 1} onClick={redo} />
+          <TBtn icon={<RefreshCw className="h-3.5 w-3.5" />} label="Reset" onClick={reset} />
+          <TBtn icon={<Crop className="h-3.5 w-3.5" />} label="Crop" onClick={applyCrop} />
+          <TBtn icon={<RotateCcw className="h-3.5 w-3.5" />} label="Rot L" onClick={() => applyRotate(false)} />
+          <TBtn icon={<RotateCw className="h-3.5 w-3.5" />} label="Rot R" tip="R" onClick={() => applyRotate(true)} />
+          <TBtn icon={<FlipHorizontal className="h-3.5 w-3.5" />} label="Flip H" onClick={() => applyFlip(true)} />
+          <TBtn icon={<FlipVertical className="h-3.5 w-3.5" />} label="Flip V" onClick={() => applyFlip(false)} />
+          <div className="w-px h-6 bg-border mx-1" />
+          <TBtn icon={<Maximize2 className="h-3.5 w-3.5" />} label="Fit" tip="0" onClick={() => fitZoom("right")} />
+          <TBtn icon={<Expand className="h-3.5 w-3.5" />} label="1:1" tip="1" onClick={() => { setRightZoom(1); setRightPanX(0); setRightPanY(0) }} />
+          <div className="w-px h-6 bg-border mx-1" />
+          {images.length > 1 && <TBtn icon={<Trash2 className="h-3.5 w-3.5" />} label="Close" onClick={() => removeImage(images[activeIdx]?.id)} className="text-destructive" />}
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={handlePaste}><FileImage className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="sm" onClick={reprocess}><RefreshCw className="h-3.5 w-3.5" /></Button>
           </div>
         </div>
       </Card>
 
-      <AnimatePresence>
-        {active?.error && (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <Card className="border-destructive/30 bg-destructive/5 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-destructive"><AlertTriangle className="h-4 w-4" /><span>{active.error}</span></div>
-                <Button variant="outline" size="sm" onClick={reprocessActive}><RefreshCw className="h-4 w-4" /> Retry</Button>
+      {active?.error && (
+        <Card className="border-destructive/30 bg-destructive/5 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-destructive"><AlertTriangle className="h-4 w-4" /><span>{active.error}</span></div>
+            <Button variant="outline" size="sm" onClick={reprocess}><RefreshCw className="h-4 w-4" /> Retry</Button>
+          </div>
+        </Card>
+      )}
+
+      <div className="flex gap-3" style={{ height: "calc(100vh - 240px)", minHeight: 420 }}>
+        <Panel className="flex-1 min-w-0">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/20">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5"><Image className="h-3 w-3" /> Original</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => fitZoom("left")} className="p-0.5 rounded text-muted-foreground hover:text-foreground"><Maximize2 className="h-3 w-3" /></button>
+              <button onClick={() => { setLeftZoom(1); setLeftPanX(0); setLeftPanY(0) }} className="p-0.5 rounded text-muted-foreground hover:text-foreground"><Expand className="h-3 w-3" /></button>
+            </div>
+          </div>
+          <div ref={leftContainerRef} className="flex-1 flex items-center justify-center overflow-hidden bg-muted/20 relative" onWheel={e => handleWheel(e, "left")}>
+            <canvas ref={leftCanvasRef}
+              onMouseDown={handleLeftDown}
+              onMouseMove={handleLeftMove}
+              onMouseUp={handleLeftUp}
+              onMouseLeave={handleLeftUp}
+              style={{ transform: `translate(${leftPanX}px, ${leftPanY}px) scale(${leftZoom})`, transformOrigin: "center center", maxWidth: "none" }}
+              className="rounded"
+            />
+          </div>
+          <div className="px-3 py-1 border-t border-border bg-muted/20 text-[10px] text-muted-foreground text-right">
+            {fgCanvasRef.current?.width}×{fgCanvasRef.current?.height} &middot; {Math.round(leftZoom * 100)}%
+          </div>
+        </Panel>
+
+        <Panel className="flex-[1.3] min-w-0">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/20">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5"><Layers className="h-3 w-3" /> Result</span>
+              <div className="flex items-center gap-0.5 ml-2">
+                {(["normal", "mask", "overlay", "split"] as MaskView[]).map(m => (
+                  <button key={m} onClick={() => { setMaskView(m); setShowRightOriginal(false) }}
+                    className={cn("px-1.5 py-0.5 text-[9px] font-medium rounded transition-all uppercase tracking-wider",
+                      maskView === m && !showRightOriginal ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}>
+                    {m === "normal" ? "Result" : m === "mask" ? "Mask" : m === "overlay" ? "Overlay" : "Split"}
+                  </button>
+                ))}
+                <button onClick={() => setShowRightOriginal(!showRightOriginal)}
+                  className={cn("px-1.5 py-0.5 text-[9px] font-medium rounded transition-all uppercase tracking-wider",
+                    showRightOriginal ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}>
+                  Original
+                </button>
               </div>
-            </Card>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => fitZoom("right")} className="p-0.5 rounded text-muted-foreground hover:text-foreground"><Maximize2 className="h-3 w-3" /></button>
+              <button onClick={() => { setRightZoom(1); setRightPanX(0); setRightPanY(0) }} className="p-0.5 rounded text-muted-foreground hover:text-foreground"><Expand className="h-3 w-3" /></button>
+            </div>
+          </div>
+          <div ref={rightContainerRef} className="flex-1 flex items-center justify-center overflow-hidden bg-muted/20 relative" onWheel={e => handleWheel(e, "right")}
+            onMouseDown={handleRightDown}
+            onMouseMove={handleRightMove}
+            onMouseUp={handleRightUp}
+            onMouseLeave={handleRightUp}>
+            <canvas ref={rightCanvasRef}
+              style={{ transform: `translate(${rightPanX}px, ${rightPanY}px) scale(${rightZoom})`, transformOrigin: "center center", maxWidth: "none" }}
+              className={cn("rounded", (activeTool === "brush" || activeTool === "restore") ? "cursor-none" : "")}
+            />
+            {(activeTool === "brush" || activeTool === "restore") && (
+              <div ref={brushCursorRef}
+                className="absolute pointer-events-none border-2 rounded-full z-10"
+                style={{
+                  borderColor: activeTool === "brush" ? "rgba(239,68,68,0.7)" : "rgba(34,197,94,0.7)",
+                  backgroundColor: activeTool === "brush" ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.08)",
+                  transform: "translate(-50%, -50%)",
+                  width: brushCfg.size * rightZoom,
+                  height: brushCfg.size * rightZoom,
+                  borderRadius: brushCfg.hardness >= 100 ? "50%" : `${brushCfg.hardness / 100 * 50}%`,
+                }}
+              />
+            )}
+            {maskView === "split" && !showRightOriginal && (
+              <div className="absolute inset-0 z-10 pointer-events-none">
+                <div className="absolute h-full w-0.5 bg-white shadow-lg z-20"
+                  style={{ left: `${sliderPos}%`, transform: "translateX(-50%)", top: 0 }}>
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white shadow-md flex items-center justify-center border border-primary">
+                    <ArrowLeftRightIcon className="h-3 w-3 text-primary" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="px-3 py-1 border-t border-border bg-muted/20 text-[10px] text-muted-foreground flex justify-between items-center">
+            <span>{fgCanvasRef.current?.width}×{fgCanvasRef.current?.height} &middot; {Math.round(rightZoom * 100)}%</span>
+            <span className="text-[10px] text-muted-foreground">Hist: {histIdx + 1}/{history.length}</span>
+          </div>
+        </Panel>
+
+        <Panel className="w-56 shrink-0 overflow-y-auto">
+          <div className="px-3 py-2 border-b border-border bg-muted/20">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5"><Sliders className="h-3 w-3" /> Tools</span>
+          </div>
+
+          {activeTool === "brush" || activeTool === "restore" ? (
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Mode</span>
+                <div className="flex rounded-lg border border-border overflow-hidden">
+                  <button onClick={() => setActiveTool("brush")} className={cn("px-2.5 py-1 text-[10px] font-medium", activeTool === "brush" ? "bg-destructive/10 text-destructive" : "text-muted-foreground")}>Erase</button>
+                  <button onClick={() => setActiveTool("restore")} className={cn("px-2.5 py-1 text-[10px] font-medium", activeTool === "restore" ? "bg-emerald-500/10 text-emerald-500" : "text-muted-foreground")}>Restore</button>
+                </div>
+              </div>
+              <Slider label="Size" value={brushCfg.size} min={1} max={500} step={1} onChange={v => setBrushCfg(p => ({ ...p, size: v }))} />
+              <Slider label="Hardness" value={brushCfg.hardness} min={0} max={100} step={1} onChange={v => setBrushCfg(p => ({ ...p, hardness: v }))} />
+              <Slider label="Opacity" value={brushCfg.opacity} min={1} max={100} step={1} onChange={v => setBrushCfg(p => ({ ...p, opacity: v }))} />
+              <Slider label="Flow" value={brushCfg.flow} min={1} max={100} step={1} onChange={v => setBrushCfg(p => ({ ...p, flow: v }))} />
+              <Slider label="Spacing" value={brushCfg.spacing} min={1} max={100} step={1} onChange={v => setBrushCfg(p => ({ ...p, spacing: v }))} />
+            </div>
+          ) : activeTool === "pan" ? (
+            <div className="p-3 text-xs text-muted-foreground">
+              <p>Drag to pan</p>
+              <p className="mt-1">Middle-click or hold H</p>
+            </div>
+          ) : (
+            <div className="p-3 text-xs text-muted-foreground">
+              <p>Select a tool above</p>
+              <div className="mt-2 space-y-1 text-[10px]">
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">B</kbd> Brush</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">E</kbd> Restore</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">H</kbd> Pan</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">[ ]</kbd> Brush size</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">^Z</kbd> Undo</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">^Y</kbd> Redo</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">^S</kbd> Export</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">0</kbd> Fit screen</p>
+                <p><kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">1</kbd> Actual size</p>
+              </div>
+            </div>
+          )}
+
+          <div className="border-t border-border mt-2">
+            <PopBtn2 icon={<Sliders className="h-3 w-3" />} label="Refine">
+              <div className="space-y-2.5 p-3 w-52">
+                <div><label className="text-[10px] text-muted-foreground">Feather: {featherRadius}px</label><input type="range" min="0" max="10" value={featherRadius} onChange={e => setFeatherRadius(Number(e.target.value))} className="w-full accent-primary" /></div>
+                <Button size="sm" variant="outline" fullWidth onClick={applyFeather}>Apply Feather</Button>
+                <div><label className="text-[10px] text-muted-foreground">Edge: {edgeRefine}px</label><input type="range" min="1" max="10" value={edgeRefine} onChange={e => setEdgeRefine(Number(e.target.value))} className="w-full accent-primary" /></div>
+                <div className="flex gap-2"><Button size="sm" variant="outline" onClick={applyDilate}>Expand</Button><Button size="sm" variant="outline" onClick={applyErode}>Shrink</Button></div>
+                <div><label className="text-[10px] text-muted-foreground">Opacity: {transparency}%</label><input type="range" min="0" max="100" value={transparency} onChange={e => setTransparency(Number(e.target.value))} className="w-full accent-primary" /></div>
+                <Button size="sm" variant="outline" fullWidth onClick={applyTransparency}>Apply Opacity</Button>
+              </div>
+            </PopBtn2>
+            <PopBtn2 icon={<PaintBucket className="h-3 w-3" />} label="Background">
+              <div className="space-y-2 p-3 min-w-[210px]">
+                <div className="flex flex-wrap gap-1">
+                  {(["transparent", "solid", "gradient", "blur", "custom", "pattern"] as BgOption[]).map(opt => (
+                    <button key={opt} onClick={() => setBgOption(opt)} className={cn("px-2 py-1 text-[9px] font-medium rounded border transition-all", bgOption === opt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
+                      {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                {bgOption === "solid" && <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="w-full h-7 rounded cursor-pointer" />}
+                {bgOption === "gradient" && (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2 items-center"><input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="h-6 w-6 rounded cursor-pointer" /><input type="color" value={bgColor2} onChange={e => setBgColor2(e.target.value)} className="h-6 w-6 rounded cursor-pointer" /></div>
+                    <select value={gradientType} onChange={e => setGradientType(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1 text-[10px]">
+                      <option value="linear-diagonal">Diagonal</option><option value="linear-top">Top-Bottom</option><option value="linear-right">Left-Right</option><option value="radial">Radial</option>
+                    </select>
+                  </div>
+                )}
+                {bgOption === "blur" && <div><label className="text-[10px] text-muted-foreground">Blur: {blurRadius}px</label><input type="range" min="2" max="50" value={blurRadius} onChange={e => setBlurRadius(Number(e.target.value))} className="w-full accent-primary" /></div>}
+                {bgOption === "custom" && (
+                  <div className="flex gap-2 items-center">
+                    <Button variant="outline" size="sm" onClick={() => bgFileRef.current?.click()}>Upload</Button>
+                    {customBg && <div className="h-7 w-7 rounded border overflow-hidden shrink-0"><img src={customBg} className="h-full w-full object-cover" /></div>}
+                  </div>
+                )}
+                {bgOption === "pattern" && (
+                  <div className="space-y-1.5">
+                    <select value={patternType} onChange={e => setPatternType(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1 text-[10px]">
+                      <option value="checkerboard">Checkerboard</option><option value="dots">Dots</option><option value="stripes">Stripes</option>
+                    </select>
+                    <div className="flex gap-2 items-center"><input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="h-6 w-6 rounded cursor-pointer" /><input type="color" value={bgColor2} onChange={e => setBgColor2(e.target.value)} className="h-6 w-6 rounded cursor-pointer" /></div>
+                  </div>
+                )}
+              </div>
+            </PopBtn2>
+            <PopBtn2 icon={<Download className="h-3 w-3" />} label="Export">
+              <div className="space-y-2.5 p-3 min-w-[180px]">
+                <div className="flex gap-1">
+                  {(["png", "jpeg", "webp"] as const).map(fmt => (
+                    <button key={fmt} onClick={() => setExportFormat(fmt)} className={cn("flex-1 px-2 py-1 text-[10px] font-medium rounded border transition-all", exportFormat === fmt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>{fmt.toUpperCase()}</button>
+                  ))}
+                </div>
+                {exportFormat !== "png" && <div><label className="text-[10px] text-muted-foreground">Quality: {exportQuality}%</label><input type="range" min="50" max="100" value={exportQuality} onChange={e => setExportQuality(Number(e.target.value))} className="w-full accent-primary" /></div>}
+                {exportFormat === "jpeg" && bgOption === "transparent" && <p className="text-[9px] text-amber-500">JPEG no transparency. White bg.</p>}
+                <Button variant="primary" size="sm" fullWidth onClick={handleExport} disabled={exporting}>
+                  {exporting ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Exporting...</> : <><Download className="h-3.5 w-3.5" /> Download</>}
+                </Button>
+              </div>
+            </PopBtn2>
+          </div>
+
+          <div className="px-3 py-2 border-t border-border bg-muted/20">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5"><History className="h-3 w-3" /> History</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto p-2 space-y-0.5">
+            {history.map((entry, i) => (
+              <button key={entry.id} onClick={() => jumpToHistory(i)}
+                className={cn("w-full text-left px-2 py-1 rounded text-[10px] transition-colors truncate",
+                  i === histIdx ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:bg-accent")}>
+                {entry.name}
+              </button>
+            ))}
+            {history.length === 0 && <p className="text-[10px] text-muted-foreground px-2 py-1">No edits yet</p>}
+          </div>
+        </Panel>
+      </div>
+
+      <AnimatePresence>
+        {(active?.processing || processing) && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground"><RefreshCw className="h-4 w-4 animate-spin text-teal-500" /> Processing with ISNet AI...</div>
+            <div className="h-2 w-72 overflow-hidden rounded-full bg-muted">
+              <motion.div initial={{ width: 0 }} animate={{ width: `${active?.progress || 0}%` }} transition={{ duration: 0.3 }}
+                className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500" />
+            </div>
+            <span className="text-xs text-muted-foreground">{active?.progress || 0}%</span>
+            <Button variant="outline" size="sm" onClick={cancelProcessing}><X className="h-4 w-4" /> Cancel</Button>
           </motion.div>
         )}
       </AnimatePresence>
-
-      <div ref={containerRef} className="relative overflow-hidden rounded-xl border border-border bg-muted/30" style={{ height: "calc(100vh - 260px)", minHeight: 400 }} onWheel={handleWheel}>
-        <div className="absolute left-2 top-2 z-20 flex items-center gap-1 rounded-lg border border-border bg-background/80 px-2 py-1.5 backdrop-blur-sm">
-          <button onClick={() => setZoom(z => Math.max(0.1, z / 1.3))} className="p-0.5 rounded text-muted-foreground hover:text-foreground"><ZoomOut className="h-3.5 w-3.5" /></button>
-          <span className="text-[11px] font-mono text-muted-foreground w-10 text-center">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(z => Math.min(10, z * 1.3))} className="p-0.5 rounded text-muted-foreground hover:text-foreground"><ZoomIn className="h-3.5 w-3.5" /></button>
-          <div className="w-px h-4 bg-border mx-1" />
-          <button onClick={fitZoom} className={cn("p-0.5 rounded", viewMode === "fit" ? "text-primary" : "text-muted-foreground hover:text-foreground")}><Maximize2 className="h-3.5 w-3.5" /></button>
-          <button onClick={() => { setZoom(1); setPanX(0); setPanY(0); setViewMode("original") }} className={cn("p-0.5 rounded", viewMode === "original" ? "text-primary" : "text-muted-foreground hover:text-foreground")}><Expand className="h-3.5 w-3.5" /></button>
-        </div>
-
-        {editCanvas && (
-          <div className="absolute top-2 right-2 z-20 flex items-center rounded-lg border border-border bg-background/80 backdrop-blur-sm overflow-hidden">
-            <button onClick={() => setShowResult(false)} className={cn("px-3 py-1.5 text-xs font-medium transition-all", !showResult ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>Original</button>
-            <button onClick={() => setShowResult(true)} className={cn("px-3 py-1.5 text-xs font-medium transition-all", showResult ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>Result</button>
-          </div>
-        )}
-
-        <canvas ref={layerRef} style={{ display: "none" }} />
-
-        <div className="flex items-center justify-center w-full h-full overflow-hidden">
-          <canvas
-            ref={displayRef}
-            onMouseDown={handleCanvasDown}
-            onMouseMove={handleCanvasMove}
-            onMouseUp={handleCanvasUp}
-            onMouseLeave={handleCanvasUp}
-            style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: "center center", maxWidth: "none" }}
-            className={cn("rounded", activeTool === "brush" ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing")}
-          />
-        </div>
-
-        <AnimatePresence>
-          {(active?.processing || processing) && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-background/70 backdrop-blur-sm">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground"><RefreshCw className="h-4 w-4 animate-spin text-teal-500" /> Processing with ISNet AI...</div>
-              <div className="h-2 w-72 overflow-hidden rounded-full bg-muted">
-                <motion.div initial={{ width: 0 }} animate={{ width: `${active?.progress || 0}%` }} transition={{ duration: 0.3 }}
-                  className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500" />
-              </div>
-              <span className="text-xs text-muted-foreground">{active?.progress || 0}%</span>
-              <Button variant="outline" size="sm" onClick={cancelProcessing}><X className="h-4 w-4" /> Cancel</Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {editCanvas && showResult && (
-          <SliderOverlay
-            editCanvas={editCanvas}
-            zoom={zoom}
-            panX={panX}
-            panY={panY}
-            sliderPos={sliderPos}
-            onSliderChange={setSliderPos}
-          />
-        )}
-      </div>
-
-      <Card className="p-2 sm:p-3">
-        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
-          <TButton icon={<Brush className="h-4 w-4" />} label="Brush" active={activeTool === "brush"} onClick={() => setActiveTool(activeTool === "brush" ? null : "brush")} />
-          <TButton icon={<Eraser className="h-4 w-4" />} label="Magic Erase" active={activeTool === "magic-eraser"} onClick={() => setActiveTool(activeTool === "magic-eraser" ? null : "magic-eraser")} />
-          <div className="w-px h-6 bg-border mx-1" />
-          {activeTool === "brush" && (
-            <>
-              <div className="flex items-center rounded-lg border border-border overflow-hidden">
-                <button onClick={() => setBrushMode("erase")} className={cn("px-2.5 py-1.5 text-xs font-medium transition-all", brushMode === "erase" ? "bg-destructive/10 text-destructive" : "text-muted-foreground")}><Eraser className="h-3.5 w-3.5" /></button>
-                <button onClick={() => setBrushMode("restore")} className={cn("px-2.5 py-1.5 text-xs font-medium transition-all", brushMode === "restore" ? "bg-emerald-500/10 text-emerald-500" : "text-muted-foreground")}><Brush className="h-3.5 w-3.5" /></button>
-              </div>
-              <label className="flex items-center gap-1 text-[10px] text-muted-foreground">Size <input type="range" min="5" max="200" value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} className="w-12 accent-primary" /></label>
-            </>
-          )}
-          {activeTool === "magic-eraser" && (
-            <label className="flex items-center gap-1 text-[10px] text-muted-foreground">Threshold <input type="range" min="5" max="100" value={brushThreshold} onChange={e => setBrushThreshold(Number(e.target.value))} className="w-12 accent-primary" /></label>
-          )}
-          <div className="w-px h-6 bg-border mx-1" />
-          <TButton icon={<Undo2 className="h-4 w-4" />} label="Undo" disabled={historyIdx <= 0} onClick={undo} />
-          <TButton icon={<Redo2 className="h-4 w-4" />} label="Redo" disabled={historyIdx >= history.length - 1} onClick={redo} />
-          <TButton icon={<RefreshCw className="h-4 w-4" />} label="Reset" onClick={reset} />
-          <div className="w-px h-6 bg-border mx-1" />
-          <TButton icon={<Scissors className="h-4 w-4" />} label="Crop" onClick={applyCrop} />
-          <TButton icon={<RotateCcw className="h-4 w-4" />} label="Rotate L" onClick={() => applyRotate(false)} />
-          <TButton icon={<RotateCw className="h-4 w-4" />} label="Rotate R" onClick={() => applyRotate(true)} />
-          <TButton icon={<FlipHorizontal className="h-4 w-4" />} label="Flip H" onClick={() => applyFlip(true)} />
-          <TButton icon={<FlipVertical className="h-4 w-4" />} label="Flip V" onClick={() => applyFlip(false)} />
-          <div className="w-px h-6 bg-border mx-1" />
-          <PopBtn icon={<Sliders className="h-4 w-4" />} label="Refine">
-            <div className="space-y-3 p-3 w-56">
-              <div><label className="text-xs text-muted-foreground">Feather: {featherRadius}px</label><input type="range" min="0" max="10" value={featherRadius} onChange={e => setFeatherRadius(Number(e.target.value))} className="w-full accent-primary" /></div>
-              <Button size="sm" variant="outline" fullWidth onClick={applyFeather}>Apply Feather</Button>
-              <div><label className="text-xs text-muted-foreground">Edge: {edgeRefine}px</label><input type="range" min="1" max="10" value={edgeRefine} onChange={e => setEdgeRefine(Number(e.target.value))} className="w-full accent-primary" /></div>
-              <div className="flex gap-2"><Button size="sm" variant="outline" onClick={applyEdgeExpand}>Expand</Button><Button size="sm" variant="outline" onClick={applyEdgeShrink}>Shrink</Button></div>
-              <div><label className="text-xs text-muted-foreground">Opacity: {transparency}%</label><input type="range" min="0" max="100" value={transparency} onChange={e => setTransparency(Number(e.target.value))} className="w-full accent-primary" /></div>
-              <Button size="sm" variant="outline" fullWidth onClick={applyTransparency}>Apply Opacity</Button>
-            </div>
-          </PopBtn>
-          <div className="w-px h-6 bg-border mx-1" />
-          <PopBtn icon={<PaintBucket className="h-4 w-4" />} label="Background">
-            <div className="space-y-2.5 p-3 min-w-[220px]">
-              <div className="flex flex-wrap gap-1">
-                {(["transparent", "solid", "gradient", "blur", "custom", "pattern"] as BgOption[]).map(opt => (
-                  <button key={opt} onClick={() => setBgOption(opt)} className={cn("px-2.5 py-1 text-[10px] font-medium rounded-md border transition-all", bgOption === opt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30")}>
-                    {opt.charAt(0).toUpperCase() + opt.slice(1)}
-                  </button>
-                ))}
-              </div>
-              {bgOption === "solid" && <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="w-full h-8 rounded cursor-pointer" />}
-              {bgOption === "gradient" && (
-                <div className="space-y-2">
-                  <div className="flex gap-2 items-center"><input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="h-7 w-7 rounded cursor-pointer" /><input type="color" value={bgColor2} onChange={e => setBgColor2(e.target.value)} className="h-7 w-7 rounded cursor-pointer" /></div>
-                  <select value={gradientType} onChange={e => setGradientType(e.target.value)} className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs">
-                    <option value="linear-diagonal">Diagonal</option><option value="linear-top">Top to Bottom</option><option value="linear-right">Left to Right</option><option value="radial">Radial</option>
-                  </select>
-                </div>
-              )}
-              {bgOption === "blur" && <div><label className="text-xs text-muted-foreground">Blur: {blurRadius}px</label><input type="range" min="2" max="50" value={blurRadius} onChange={e => setBlurRadius(Number(e.target.value))} className="w-full accent-primary" /></div>}
-              {bgOption === "custom" && (
-                <div className="flex gap-2 items-center">
-                  <Button variant="outline" size="sm" onClick={() => bgFileRef.current?.click()}>Upload BG</Button>
-                  {customBg && <div className="h-8 w-8 rounded border overflow-hidden shrink-0"><img src={customBg} className="h-full w-full object-cover" /></div>}
-                </div>
-              )}
-              {bgOption === "pattern" && (
-                <div className="space-y-2">
-                  <select value={patternType} onChange={e => setPatternType(e.target.value)} className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs">
-                    <option value="checkerboard">Checkerboard</option><option value="dots">Dots</option><option value="stripes">Stripes</option>
-                  </select>
-                  <div className="flex gap-2 items-center"><input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="h-7 w-7 rounded cursor-pointer" /><input type="color" value={bgColor2} onChange={e => setBgColor2(e.target.value)} className="h-7 w-7 rounded cursor-pointer" /></div>
-                </div>
-              )}
-            </div>
-          </PopBtn>
-          <PopBtn icon={<Download className="h-4 w-4" />} label="Export">
-            <div className="space-y-3 p-3 min-w-[200px]">
-              <div className="flex gap-1">
-                {(["png", "jpeg", "webp"] as const).map(fmt => (
-                  <button key={fmt} onClick={() => setExportFormat(fmt)} className={cn("flex-1 px-3 py-1.5 text-xs font-medium rounded-md border transition-all", exportFormat === fmt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30")}>{fmt.toUpperCase()}</button>
-                ))}
-              </div>
-              {exportFormat !== "png" && <div><label className="text-xs text-muted-foreground">Quality: {exportQuality}%</label><input type="range" min="50" max="100" value={exportQuality} onChange={e => setExportQuality(Number(e.target.value))} className="w-full accent-primary" /></div>}
-              {exportFormat === "jpeg" && bgOption === "transparent" && <p className="text-[10px] text-amber-500">JPEG doesn&apos;t support transparency. Background will be white.</p>}
-              <Button variant="primary" size="sm" fullWidth onClick={handleExport} disabled={exporting || !editCanvas}>
-                {exporting ? <><RefreshCw className="h-4 w-4 animate-spin" /> Exporting...</> : <><Download className="h-4 w-4" /> Download {exportFormat.toUpperCase()}</>}
-              </Button>
-            </div>
-          </PopBtn>
-          {editCanvas && <div className="ml-auto text-[10px] text-muted-foreground hidden sm:block">{editCanvas.width} × {editCanvas.height}</div>}
-        </div>
-      </Card>
     </div>
   )
 }
 
-function TButton({ icon, label, active, disabled, onClick }: { icon: React.ReactNode; label: string; active?: boolean; disabled?: boolean; onClick?: () => void }) {
+function TBtn({ icon, label, tip, active, disabled, onClick, className }: {
+  icon: React.ReactNode; label: string; tip?: string; active?: boolean; disabled?: boolean; onClick?: () => void; className?: string
+}) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all border",
+      className={cn("flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-all border",
         active ? "border-primary/20 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent",
-        disabled && "opacity-40 cursor-not-allowed")}>
+        disabled && "opacity-40 cursor-not-allowed", className)}>
       {icon}
       <span className="hidden sm:inline">{label}</span>
+      {tip && <span className="text-[8px] text-muted-foreground/50 ml-0.5 hidden sm:inline">{tip}</span>}
     </button>
   )
 }
 
-function PopBtn({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+function PopBtn2({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h)
   }, [])
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative border-b border-border last:border-b-0">
       <button onClick={() => setOpen(!open)}
-        className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all border",
-          open ? "border-primary/20 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent")}>
-        {icon}<span className="hidden sm:inline">{label}</span>
+        className={cn("flex w-full items-center gap-2 px-3 py-2 text-[10px] font-medium transition-all",
+          open ? "bg-primary/5 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent")}>
+        {icon}<span>{label}</span>
+        <span className="ml-auto">{open ? "▲" : "▼"}</span>
       </button>
-      <AnimatePresence>{open && <motion.div initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
-        transition={{ duration: 0.15 }} className="absolute bottom-full left-0 mb-2 z-50 rounded-xl border border-border bg-card shadow-xl">{children}</motion.div>}</AnimatePresence>
+      <AnimatePresence>{open && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+        transition={{ duration: 0.15 }} className="overflow-hidden">{children}</motion.div>}</AnimatePresence>
     </div>
   )
 }
 
-function SliderOverlay({ editCanvas, zoom, panX, panY, sliderPos, onSliderChange }: {
-  editCanvas: HTMLCanvasElement; zoom: number; panX: number; panY: number; sliderPos: number; onSliderChange: (v: number) => void
+function Slider({ label, value, min, max, step, onChange }: {
+  label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void
 }) {
-  const sliderRef = React.useRef<HTMLDivElement>(null)
-  const canvasRef = React.useRef<HTMLCanvasElement>(null)
-  const [activeSl, setActiveSl] = React.useState(false)
-
-  React.useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !editCanvas) return
-    canvas.width = editCanvas.width
-    canvas.height = editCanvas.height
-    const ctx = canvas.getContext("2d")
-    if (ctx) ctx.drawImage(editCanvas, 0, 0)
-  }, [editCanvas])
-
+  const id = React.useId()
   return (
-    <div ref={sliderRef} className="absolute inset-0 z-10" style={{ pointerEvents: activeSl ? "auto" : "none" }}>
-      <div className="absolute inset-0 overflow-hidden" style={{ width: `${sliderPos}%`, pointerEvents: "none" }}>
-        <canvas ref={canvasRef}
-          style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: "center center", maxWidth: "none" }}
-          className="absolute top-0 left-0" />
+    <div>
+      <div className="flex items-center justify-between">
+        <label htmlFor={id} className="text-[10px] text-muted-foreground">{label}</label>
+        <span className="text-[10px] text-foreground font-mono tabular-nums">{value}</span>
       </div>
-      <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg cursor-col-resize z-20"
-        style={{ left: `${sliderPos}%`, transform: "translateX(-50%)", pointerEvents: "auto" }}
-        onMouseDown={e => { e.preventDefault(); setActiveSl(true) }}
-        onMouseMove={e => { if (activeSl) { const r = sliderRef.current?.getBoundingClientRect(); if (r) onSliderChange(((e.clientX - r.left) / r.width) * 100) } }}
-        onMouseUp={() => setActiveSl(false)}
-        onMouseLeave={() => setActiveSl(false)}>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-primary">
-          <ArrowLeftRight className="h-4 w-4 text-primary" />
-        </div>
-      </div>
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-muted accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md" />
     </div>
   )
 }
 
-function ArrowLeftRight({ className }: { className?: string }) {
+function ArrowLeftRightIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="m21 16-4 4-4-4" /><path d="M17 20V4" /><path d="m3 8 4-4 4 4" /><path d="M7 4v16" />
