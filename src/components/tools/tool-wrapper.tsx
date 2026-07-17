@@ -78,17 +78,8 @@ export function ToolWrapper({
     setError(null)
     setResult(null)
 
-    // Simulate processing progress
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 15
-        return next >= 90 ? 90 : next
-      })
-    }, 300)
-
     try {
       const res = await onProcess(files)
-      clearInterval(progressInterval)
       setProgress(100)
 
       if (res.success) {
@@ -101,7 +92,6 @@ export function ToolWrapper({
         toast.error(res.error || "Processing failed")
       }
     } catch (err) {
-      clearInterval(progressInterval)
       setState("error")
       const message =
         err instanceof Error ? err.message : "An unexpected error occurred"

@@ -182,15 +182,15 @@ export function SignPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
+      setProgress(10)
       const bytes = await fileInfo.file.arrayBuffer()
       const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      setProgress(30)
       const sigBytes = await signatureBlob.arrayBuffer()
       const sigImage = await pdf.embedPng(sigBytes).catch(() => pdf.embedJpg(sigBytes))
+      setProgress(60)
       const pages = pdf.getPages()
       const firstPage = pages[0]
       const { width } = firstPage.getSize()
@@ -203,13 +203,11 @@ export function SignPdf() {
       })
       const pdfBytes = await pdf.save()
       const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
-      clearInterval(progressInterval)
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("PDF signed successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to sign PDF. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

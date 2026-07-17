@@ -8,7 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils/cn"
 import {
-  Upload, Download, FileText, Check, X, FileDown, Gauge,
+  Upload, Download, FileText, Check, X, FileDown, Gauge, Sliders,
 } from "lucide-react"
 import { compressPDF } from "@/lib/utils/pdf-utils"
 
@@ -30,6 +30,7 @@ export function CompressPdf() {
   const [fileInfo, setFileInfo] = React.useState<FileInfo | null>(null)
   const [progress, setProgress] = React.useState(0)
   const [isProcessing, setIsProcessing] = React.useState(false)
+  const [quality, setQuality] = React.useState(60)
 
   const handleFile = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -57,25 +58,21 @@ export function CompressPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "compressing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await compressPDF(fileInfo.file)
-      clearInterval(progressInterval)
+      const q = quality / 100
+      const blob = await compressPDF(fileInfo.file, q)
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", compressedSize: blob.size, compressedUrl: url } : prev)
       toast.success("PDF compressed successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to compress PDF. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {
       setIsProcessing(false)
     }
-  }, [fileInfo])
+  }, [fileInfo, quality])
 
   const download = React.useCallback(() => {
     if (!fileInfo?.compressedUrl) return
@@ -97,7 +94,7 @@ export function CompressPdf() {
         </div>
         <div>
           <h2 className="text-lg font-semibold">Compress PDF</h2>
-          <p className="text-sm text-muted-foreground">Reduce PDF file size using object stream optimization</p>
+          <p className="text-sm text-muted-foreground">Reduce PDF file size by re-encoding pages as high-quality images</p>
         </div>
       </div>
 
@@ -189,9 +186,35 @@ export function CompressPdf() {
           )}
 
           {fileInfo.status === "idle" && !isProcessing && (
-            <Button onClick={compress} size="lg" className="w-full" icon={<Gauge className="h-4 w-4" />}>
-              Compress PDF
-            </Button>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Sliders className="h-4 w-4" />
+                    Compression quality
+                  </div>
+                  <span className="text-sm font-medium text-foreground tabular-nums">{quality}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={90}
+                  step={5}
+                  value={quality}
+                  onChange={(e) => setQuality(Number(e.target.value))}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer bg-muted accent-primary
+                    [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
+                    [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md"
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Smaller size</span>
+                  <span>Higher quality</span>
+                </div>
+              </div>
+              <Button onClick={compress} size="lg" className="w-full" icon={<Gauge className="h-4 w-4" />}>
+                Compress PDF
+              </Button>
+            </div>
           )}
         </div>
       )}

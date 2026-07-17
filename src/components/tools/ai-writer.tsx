@@ -219,19 +219,6 @@ export function AiWriter() {
     setProgress(0)
     setOutput("")
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 15
-        return next >= 90 ? 90 : next
-      })
-    }, 300)
-
-    const delay = 1200 + Math.random() * 1800
-    await new Promise((r) => setTimeout(r, delay))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const targetWords = LENGTH_WORDS[length]
     const content = getContent(tone, length, contentType, topic)
     const wordCount = content.split(/\s+/).length
@@ -239,6 +226,7 @@ export function AiWriter() {
       ? content + `\n\n_Word count: ~${targetWords} words | Tone: ${tone} | Format: ${contentType}_`
       : content
 
+    setProgress(100)
     setOutput(adjusted)
     setLoading(false)
     toast.success(`${contentType} generated in ${tone.toLowerCase()} tone`)

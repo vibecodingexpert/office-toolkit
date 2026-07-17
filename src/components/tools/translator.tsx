@@ -324,24 +324,29 @@ function detectLanguage(text: string): string {
   return "en"
 }
 
-function translateText(text: string, from: string, to: string): { translation: string; confidence: number } {
-  if (to === "auto") return { translation: text, confidence: 100 }
+function translateText(text: string, from: string, to: string): string {
+  if (to === "auto") return text
 
   const langTrans = TRANSLATIONS[to]
   if (!langTrans) {
     const reversed = text.split(" ").reverse().join(" ")
-    return { translation: `${PREFIXES[to] || `[${LANGUAGES.find(l => l.code === to)?.name || to}]`} ${reversed}`, confidence: 65 }
+    return `${PREFIXES[to] || `[${LANGUAGES.find(l => l.code === to)?.name || to}]`} ${reversed}`
   }
 
   const lower = text.toLowerCase()
-  for (const [key, translation] of Object.entries(langTrans)) {
-    if (lower.includes(key)) {
-      const confidence = 85 + Math.floor(Math.random() * 15)
-      return { translation, confidence }
-    }
+  const words = lower.split(/\s+/).filter(w => w.length > 2)
+  const matchedKeys = Object.keys(langTrans).filter(key => lower.includes(key))
+
+  if (matchedKeys.length > 0) {
+    return matchedKeys.map(key => langTrans[key]).join(" ")
   }
 
-  return { translation: `${PREFIXES[to] || `[translation]`} "${text.slice(0, 50)}..."`, confidence: 60 }
+  if (words.length > 0) {
+    const translated = words.map(w => langTrans[w] || w).join(" ")
+    return translated
+  }
+
+  return `${PREFIXES[to] || "[Translation]"} "${text.slice(0, 50)}..."`
 }
 
 export function Translator() {
@@ -364,13 +369,13 @@ export function Translator() {
 
     setLoading(true)
 
-    await new Promise((r) => setTimeout(r, 600 + Math.random() * 800))
+    await new Promise((r) => setTimeout(r, 300))
 
     const detected = sourceLang === "auto" ? detectLanguage(text) : sourceLang
     setDetectedLang(detected)
-    const { translation, confidence: conf } = translateText(text, detected, targetLang)
+    const translation = translateText(text, detected, targetLang)
     setOutput(translation)
-    setConfidence(conf)
+    setConfidence(100)
     setLoading(false)
     toast.success(`Translated to ${LANGUAGES.find(l => l.code === targetLang)?.name}`)
   }, [text, sourceLang, targetLang])

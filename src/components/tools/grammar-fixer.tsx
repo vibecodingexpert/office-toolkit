@@ -349,19 +349,8 @@ export function GrammarFixer() {
     setLoading(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 20
-        return next >= 90 ? 90 : next
-      })
-    }, 200)
-
-    await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const result = generateCorrections(text)
+    setProgress(100)
     setOutput(result)
     setLoading(false)
     toast.success(`${result.changes.length} correction${result.changes.length !== 1 ? "s" : ""} found and applied`)

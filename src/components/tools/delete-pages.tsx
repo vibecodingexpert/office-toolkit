@@ -93,20 +93,29 @@ export function DeletePages() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await deletePagesFromPDF(fileInfo.file, selectedPages)
-      clearInterval(progressInterval)
+      const { PDFDocument } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const totalPages = pdf.getPageCount()
+      const keepIndices = Array.from({ length: totalPages }, (_, i) => i).filter(
+        (i) => !selectedPages.includes(i + 1)
+      )
+      const newPdf = await PDFDocument.create()
+      for (let i = 0; i < keepIndices.length; i++) {
+        const [page] = await newPdf.copyPages(pdf, [keepIndices[i]])
+        newPdf.addPage(page)
+        setProgress(Math.round(((i + 1) / keepIndices.length) * 100))
+      }
+      const pdfBytes = await newPdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       setProgress(100)
       const url = URL.createObjectURL(blob)
-      const remaining = fileInfo.pages - selectedPages.length
+      const remaining = totalPages - selectedPages.length
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success(`Deleted ${selectedPages.length} page(s)!`)
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to delete pages. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

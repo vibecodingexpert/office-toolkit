@@ -132,15 +132,9 @@ export function MeetingNotes() {
     }
 
     setLoading(true); setProgress(0)
-    const interval = setInterval(() => {
-      setProgress(prev => Math.min(prev + Math.random() * 20, 90))
-    }, 200)
-
-    await new Promise(r => setTimeout(r, 600 + Math.random() * 800))
-
-    clearInterval(interval); setProgress(100)
 
     setNotes(generateNotes({ type, title, date, duration, attendees, agenda, discussion, decisions, tone }))
+    setProgress(100)
     setLoading(false)
     toast.success("Meeting notes generated")
   }, [type, title, date, duration, attendees, agenda, discussion, decisions, tone])

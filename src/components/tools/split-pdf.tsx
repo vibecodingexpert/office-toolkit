@@ -109,25 +109,49 @@ export function SplitPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      let blobs: Blob[]
-      if (splitMode === "range") {
-        const ranges = parseRanges(pageRange)
-        blobs = await splitPDF(fileInfo.file, ranges)
-      } else {
-        blobs = await splitPDF(fileInfo.file, selectedPages.map((p) => ({ start: p, end: p })))
+      const { PDFDocument } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+
+      const ranges = splitMode === "range"
+        ? parseRanges(pageRange)
+        : selectedPages.map((p) => ({ start: p, end: p }))
+
+      const results: Blob[] = []
+      let totalSplitPages = 0
+      for (const r of ranges) {
+        const start = Math.max(0, r.start - 1)
+        const end = Math.min(totalPages, r.end)
+        totalSplitPages += Math.max(0, end - start)
       }
 
-      clearInterval(progressInterval)
+      let processedPages = 0
+      for (const range of ranges) {
+        const newPdf = await PDFDocument.create()
+        const start = Math.max(0, range.start - 1)
+        const end = Math.min(totalPages, range.end)
+        const indices = Array.from({ length: end - start }, (_, i) => start + i)
+        if (indices.length > 0) {
+          const pages = await newPdf.copyPages(pdf, indices)
+          for (const page of pages) {
+            newPdf.addPage(page)
+          }
+        }
+        const pdfBytes = await newPdf.save()
+        results.push(new Blob([pdfBytes as BlobPart], { type: "application/pdf" }))
+        processedPages += indices.length
+        if (totalSplitPages > 0) {
+          setProgress(Math.round((processedPages / totalSplitPages) * 100))
+        }
+      }
+
       setProgress(100)
 
       const { default: JSZip } = await import("jszip")
       const zip = new JSZip()
-      blobs.forEach((blob, i) => {
+      results.forEach((blob, i) => {
         zip.file(`split_${i + 1}.pdf`, blob)
       })
       const zipBlob = await zip.generateAsync({ type: "blob" })
@@ -137,13 +161,12 @@ export function SplitPdf() {
       setFileInfo((prev) => prev ? { ...prev, status: "done" } : prev)
       toast.success("PDF split successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to split PDF. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {
       setIsProcessing(false)
     }
-  }, [fileInfo, splitMode, pageRange, validateRange, selectedPages, parseRanges])
+  }, [fileInfo, splitMode, pageRange, validateRange, selectedPages, parseRanges, totalPages])
 
   const download = React.useCallback(() => {
     if (!splitUrl) return

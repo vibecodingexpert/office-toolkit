@@ -154,19 +154,8 @@ export function CodeExplainer() {
     setLoading(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 20
-        return next >= 90 ? 90 : next
-      })
-    }, 200)
-
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const result = generateExplanation(code, language)
+    setProgress(100)
     setExplanation(result)
     setLoading(false)
     toast.success(`Explained ${result.lines.length} lines`)

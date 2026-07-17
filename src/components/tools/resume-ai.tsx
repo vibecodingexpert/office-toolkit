@@ -189,24 +189,13 @@ export function ResumeAI() {
     setLoading(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 20
-        return next >= 90 ? 90 : next
-      })
-    }, 200)
-
-    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const result = generateResume({
       name, title, industry, level, style,
       skills: selectedSkills,
       experience: experience.filter(e => e.company || e.role),
       education,
     })
+    setProgress(100)
     setResume(result)
     setLoading(false)
     toast.success("Resume generated")

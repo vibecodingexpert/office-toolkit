@@ -156,18 +156,6 @@ export function PromptGenerator() {
     setLoading(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 22
-        return next >= 90 ? 90 : next
-      })
-    }, 200)
-
-    await new Promise((r) => setTimeout(r, 500 + Math.random() * 700))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const categoryTemplates = TEMPLATES[category]
     const prompts: string[] = []
     const indices = new Set<number>()
@@ -181,6 +169,7 @@ export function PromptGenerator() {
       if (prompt) prompts.push(prompt)
     }
 
+    setProgress(100)
     setGeneratedPrompts(prompts)
     setLoading(false)
     toast.success("Prompts generated")

@@ -64,19 +64,35 @@ export function WatermarkPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await addWatermarkToPDF(fileInfo.file, watermarkText, opacity / 100, rotation)
-      clearInterval(progressInterval)
+      const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const font = await pdf.embedFont(StandardFonts.Helvetica)
+      const pages = pdf.getPages()
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i]
+        const { width, height } = page.getSize()
+        const fontSize = Math.min(width, height) / 6
+        page.drawText(watermarkText, {
+          x: width / 2 - (watermarkText.length * fontSize * 0.3) / 2,
+          y: height / 2 - fontSize / 2,
+          size: fontSize,
+          font,
+          color: rgb(0.5, 0.5, 0.5),
+          opacity: opacity / 100,
+          rotate: degrees(rotation),
+        })
+        setProgress(Math.round(((i + 1) / pages.length) * 100))
+      }
+      const pdfBytes = await pdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("Watermark applied successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to apply watermark. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

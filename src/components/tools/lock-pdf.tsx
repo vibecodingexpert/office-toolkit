@@ -82,19 +82,14 @@ export function LockPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
       const blob = await encryptPDF(fileInfo.file, password)
-      clearInterval(progressInterval)
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("PDF locked successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to encrypt PDF. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

@@ -115,19 +115,8 @@ export function AiSummarizer() {
     setLoading(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 18
-        return next >= 90 ? 90 : next
-      })
-    }, 200)
-
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 1500))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const res = extractiveSummarize(text, levelConfig.ratio, extractKeyPoints)
+    setProgress(100)
     setResult(res)
     setLoading(false)
     toast.success(`Summary generated — ${res.stats.reduction}% reduction`)

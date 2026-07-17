@@ -93,19 +93,26 @@ export function ReorderPages() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await reorderPagesInPDF(fileInfo.file, pageOrder)
-      clearInterval(progressInterval)
+      const { PDFDocument } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const totalPages = pdf.getPageCount()
+      const validOrder = pageOrder.filter((i) => i >= 1 && i <= totalPages)
+      const newPdf = await PDFDocument.create()
+      for (let i = 0; i < validOrder.length; i++) {
+        const [page] = await newPdf.copyPages(pdf, [validOrder[i] - 1])
+        newPdf.addPage(page)
+        setProgress(Math.round(((i + 1) / validOrder.length) * 100))
+      }
+      const pdfBytes = await newPdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("Pages reordered successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to reorder pages. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

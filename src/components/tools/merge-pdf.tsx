@@ -73,20 +73,39 @@ export function MergePdf() {
     }
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await mergePDFs(files.map((f) => f.file))
-      clearInterval(progressInterval)
+      const { PDFDocument } = await import("pdf-lib")
+      const mergedPdf = await PDFDocument.create()
+      let totalPages = 0
+      const pageData: { pdf: Awaited<ReturnType<typeof PDFDocument.load>>; indices: number[] }[] = []
+
+      for (const f of files) {
+        const bytes = await f.file.arrayBuffer()
+        const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+        const indices = pdf.getPageIndices()
+        totalPages += indices.length
+        pageData.push({ pdf, indices })
+      }
+
+      let processedPages = 0
+      for (const { pdf, indices } of pageData) {
+        const pages = await mergedPdf.copyPages(pdf, indices)
+        for (const page of pages) {
+          mergedPdf.addPage(page)
+          processedPages++
+          setProgress(Math.round((processedPages / totalPages) * 100))
+        }
+      }
+
+      const pdfBytes = await mergedPdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setMergedUrl(url)
       setMergedSize(blob.size)
       toast.success("PDFs merged successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to merge PDFs. Please try again.")
     } finally {
       setIsProcessing(false)

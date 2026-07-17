@@ -50,16 +50,11 @@ function saveHistory(items: DownloadItem[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
 }
 
-function formatSpeed(bytesPerSecond: number): string {
-  if (bytesPerSecond < 1024) return `${Math.round(bytesPerSecond)} B/s`
-  if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
-  return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`
-}
-
 export function DownloadManager() {
   const [url, setUrl] = React.useState("")
   const [downloads, setDownloads] = React.useState<DownloadItem[]>([])
   const [activeTab, setActiveTab] = React.useState<"all" | "active" | "completed">("all")
+  const abortControllers = React.useRef<Map<string, AbortController>>(new Map())
 
   React.useEffect(() => {
     setDownloads(loadHistory())
@@ -69,40 +64,76 @@ export function DownloadManager() {
     saveHistory(downloads)
   }, [downloads])
 
-  // Simulate download progress
-  const simulateDownload = (id: string) => {
-    let progress = 0
-    const totalSize = Math.floor(Math.random() * 50 + 5) * 1024 * 1024
-    const speed = Math.floor(Math.random() * 500 + 100) * 1024
+  const startDownload = React.useCallback(async (id: string) => {
+    const item = downloads.find(d => d.id === id)
+    if (!item) return
 
-    const interval = setInterval(() => {
-      setDownloads((prev) => {
-        const item = prev.find((d) => d.id === id)
-        if (!item || item.status === "paused" || item.status === "completed" || item.status === "failed") {
-          return prev
-        }
+    const controller = new AbortController()
+    abortControllers.current.set(id, controller)
 
-        progress += Math.min(100, (speed * 0.1) / totalSize * 100)
+    setDownloads(prev => prev.map(d =>
+      d.id === id ? { ...d, status: "downloading" as const } : d
+    ))
 
-        if (progress >= 100) {
-          clearInterval(interval)
-          return prev.map((d) =>
-            d.id === id
-              ? { ...d, status: "completed" as const, progress: 100, downloadedBytes: totalSize, completedTime: Date.now() }
-              : d
-          )
-        }
+    try {
+      const response = await fetch(item.url, { signal: controller.signal })
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
 
-        return prev.map((d) =>
-          d.id === id
-            ? { ...d, progress, downloadedBytes: Math.round((progress / 100) * totalSize), totalBytes: totalSize }
-            : d
-        )
-      })
-    }, 100)
+      const contentLength = response.headers.get("content-length")
+      const total = contentLength ? parseInt(contentLength, 10) : 0
+      const reader = response.body!.getReader()
+      const chunks: Uint8Array[] = []
+      let downloaded = 0
 
-    return interval
-  }
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+        downloaded += value.length
+
+        setDownloads(prev => prev.map(d =>
+          d.id === id ? {
+            ...d,
+            downloadedBytes: downloaded,
+            totalBytes: total || downloaded,
+            progress: total ? Math.round((downloaded / total) * 100) : 0,
+          } : d
+        ))
+      }
+
+      const blob = new Blob(chunks as BlobPart[])
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.download = item.filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+
+      setDownloads(prev => prev.map(d =>
+        d.id === id ? {
+          ...d,
+          status: "completed" as const,
+          progress: 100,
+          downloadedBytes: downloaded,
+          totalBytes: total || downloaded,
+          completedTime: Date.now(),
+        } : d
+      ))
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return
+      setDownloads(prev => prev.map(d =>
+        d.id === id ? {
+          ...d,
+          status: "failed" as const,
+          error: err instanceof Error ? err.message : "Download failed",
+        } : d
+      ))
+    } finally {
+      abortControllers.current.delete(id)
+    }
+  }, [downloads])
 
   const addDownload = () => {
     if (!url.trim()) return
@@ -121,36 +152,24 @@ export function DownloadManager() {
     setDownloads((prev) => [newItem, ...prev])
     setUrl("")
 
-    // Start after short delay (simulated queue)
-    setTimeout(() => {
-      setDownloads((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, status: "downloading" as const } : d))
-      )
-      const interval = simulateDownload(id)
-      // Store interval for cleanup
-      ;(window as any)[`dl_${id}`] = interval
-    }, 500)
+    setTimeout(() => startDownload(id), 500)
   }
 
   const pauseDownload = (id: string) => {
+    const controller = abortControllers.current.get(id)
+    if (controller) controller.abort()
     setDownloads((prev) =>
       prev.map((d) => (d.id === id ? { ...d, status: "paused" as const } : d))
     )
-    const interval = (window as any)[`dl_${id}`]
-    if (interval) clearInterval(interval)
   }
 
   const resumeDownload = (id: string) => {
-    setDownloads((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, status: "downloading" as const } : d))
-    )
-    const interval = simulateDownload(id)
-    ;(window as any)[`dl_${id}`] = interval
+    startDownload(id)
   }
 
   const cancelDownload = (id: string) => {
-    const interval = (window as any)[`dl_${id}`]
-    if (interval) clearInterval(interval)
+    const controller = abortControllers.current.get(id)
+    if (controller) controller.abort()
     setDownloads((prev) =>
       prev.map((d) => (d.id === id ? { ...d, status: "failed" as const, error: "Cancelled" } : d))
     )

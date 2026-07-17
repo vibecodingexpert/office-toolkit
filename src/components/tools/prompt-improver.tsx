@@ -145,20 +145,9 @@ export function PromptImprover() {
     setLoading(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 18
-        return next >= 90 ? 90 : next
-      })
-    }, 200)
-
-    await new Promise((r) => setTimeout(r, 600 + Math.random() * 900))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const result = analyzePrompt(prompt)
     const improved = applyGoalImprovement(prompt, goal)
+    setProgress(100)
 
     setAnalysis(result)
     setImprovedPrompt(improved)

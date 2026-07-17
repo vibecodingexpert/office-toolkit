@@ -60,19 +60,23 @@ export function RotatePdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await rotatePDFPages(fileInfo.file, rotation)
-      clearInterval(progressInterval)
+      const { PDFDocument, degrees } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const pages = pdf.getPages()
+      for (let i = 0; i < pages.length; i++) {
+        pages[i].setRotation(degrees(rotation))
+        setProgress(Math.round(((i + 1) / pages.length) * 100))
+      }
+      const pdfBytes = await pdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("PDF rotated successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to rotate PDF. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

@@ -172,11 +172,51 @@ export async function imagesToPDF(files: File[]): Promise<Blob> {
   return new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
 }
 
-export async function compressPDF(file: File): Promise<Blob> {
+export async function compressPDF(file: File, quality: number = 0.6): Promise<Blob> {
   const bytes = await file.arrayBuffer()
-  const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
-  const pdfBytes = await pdf.save({ useObjectStreams: true, addDefaultPage: false })
-  return new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
+
+  try {
+    const pdfjsLib = await import("pdfjs-dist")
+    const pdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise
+    const { default: jsPDF } = await import("jspdf")
+
+    if (pdf.numPages === 0) throw new Error("Empty PDF")
+
+    let doc: InstanceType<typeof jsPDF> | null = null
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const viewport = page.getViewport({ scale: 1.5 })
+
+      const canvas = document.createElement("canvas")
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      const ctx = canvas.getContext("2d")!
+      ctx.fillStyle = "white"
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      await page.render({ canvas, viewport }).promise
+
+      const imgData = canvas.toDataURL("image/jpeg", quality)
+      const w = viewport.width * 0.264583
+      const h = viewport.height * 0.264583
+
+      if (i === 1) {
+        doc = new jsPDF({ unit: "mm", format: [w, h], orientation: w > h ? "l" : "p" })
+        doc.addImage(imgData, "JPEG", 0, 0, w, h)
+      } else if (doc) {
+        doc.addPage([w, h])
+        doc.addImage(imgData, "JPEG", 0, 0, w, h)
+      }
+    }
+
+    if (!doc) throw new Error("Failed to create PDF")
+    const pdfBlob = doc.output("blob")
+    return pdfBlob
+  } catch {
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+    const pdfBytes = await pdf.save({ useObjectStreams: true })
+    return new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
+  }
 }
 
 export async function addPageNumbersToPDF(

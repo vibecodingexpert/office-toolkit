@@ -120,19 +120,12 @@ export function CoverLetterAI() {
     }
 
     setLoading(true); setProgress(0)
-    const interval = setInterval(() => {
-      setProgress(prev => Math.min(prev + Math.random() * 20, 90))
-    }, 200)
-
-    await new Promise(r => setTimeout(r, 800 + Math.random() * 1000))
-
-    clearInterval(interval); setProgress(100)
-
     const result = generateCoverLetter({
       yourName, companyName, position, industry, tone,
       highlights: highlights.filter(Boolean),
       recipientName, additionalNotes,
     })
+    setProgress(100)
     setCoverLetter(result)
     setLoading(false)
     toast.success("Cover letter generated")

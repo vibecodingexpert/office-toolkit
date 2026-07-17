@@ -177,20 +177,9 @@ export function CodeGenerator() {
     setProgress(0)
     setOutput("")
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 15
-        return next >= 90 ? 90 : next
-      })
-    }, 300)
-
-    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const template = CODE_TEMPLATES[language] || CODE_TEMPLATES[language.replace(/\.\w+$/, "")]
     const code = template ? template(desc, codeType) : DEFAULT_CODE
+    setProgress(100)
     setOutput(code)
     setLoading(false)
     toast.success(`${language} ${codeType} generated`)

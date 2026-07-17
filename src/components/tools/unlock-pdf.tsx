@@ -77,19 +77,14 @@ export function UnlockPdf() {
     setIsProcessing(true)
     setProgress(0)
     setIsWrongPassword(false)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
       const blob = await decryptPDF(fileInfo.file, password)
-      clearInterval(progressInterval)
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("PDF unlocked successfully!")
     } catch {
-      clearInterval(progressInterval)
       setIsWrongPassword(true)
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
       toast.error("Incorrect password. Please try again.")

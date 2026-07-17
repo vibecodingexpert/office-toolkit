@@ -79,19 +79,25 @@ export function CropPdf() {
     setFileInfo((prev) => prev ? { ...prev, status: "processing" } : prev)
     setIsProcessing(true)
     setProgress(0)
-    const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 5 + Math.random() * 10, 90))
-    }, 300)
 
     try {
-      const blob = await cropPDFPages(fileInfo.file, { x, y, width, height })
-      clearInterval(progressInterval)
+      const { PDFDocument } = await import("pdf-lib")
+      const bytes = await fileInfo.file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true })
+      const pages = pdf.getPages()
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i]
+        const { height: ph } = page.getSize()
+        page.setCropBox(x, ph - y - height, width, height)
+        setProgress(Math.round(((i + 1) / pages.length) * 100))
+      }
+      const pdfBytes = await pdf.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" })
       setProgress(100)
       const url = URL.createObjectURL(blob)
       setFileInfo((prev) => prev ? { ...prev, status: "done", resultUrl: url, resultSize: blob.size } : prev)
       toast.success("PDF cropped successfully!")
     } catch {
-      clearInterval(progressInterval)
       toast.error("Failed to crop PDF. Please try again.")
       setFileInfo((prev) => prev ? { ...prev, status: "error" } : prev)
     } finally {

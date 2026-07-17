@@ -159,20 +159,9 @@ export function BlogWriter() {
     setProgress(0)
     setOutput("")
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + Math.random() * 12
-        return next >= 90 ? 90 : next
-      })
-    }, 300)
-
-    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000))
-
-    clearInterval(interval)
-    setProgress(100)
-
     const kwArray = keywords.split(",").map(k => k.trim()).filter(Boolean)
     const { content, seo: seoData, wordCount: wc } = generateBlogPost(topic, kwArray, tone, length, includeOutline)
+    setProgress(100)
     setOutput(content)
     setSeo(seoData)
     setWordCount(wc)
